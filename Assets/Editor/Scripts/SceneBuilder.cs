@@ -232,6 +232,24 @@ namespace SwingingPaintBucket.Editor
              pendulumController.StartButton = startButton;
              pendulumController.ResetButton = resetButton;
 
+            // ─── ربط الأزرار برمجياً بالدوال لتفعيلها عند الضغط ───────────────────
+            // ربط زر بدء المحاكاة بالدالة المسؤولة عن تشغيل السكربت أو تفعيل flag الحركة
+            startButton.onClick.AddListener(() =>
+            {
+                // هنا نخبر الكنترولر أن يبدأ تشغيل الفيزياء والحركة
+                // تأكدي أن سكربت PendulumController يحتوي على دالة للبدء، غالباً تسمى StartSimulation أو ما يشابهها
+                pendulumController.enabled = true;
+                Debug.Log("[Runtime] Start Simulation Button Clicked!");
+            });
+
+            // ربط زر إعادة الضبط لإعادة تشغيل المشهد من جديد
+            resetButton.onClick.AddListener(() =>
+            {
+                UnityEngine.SceneManagement.SceneManager.LoadScene(
+                    UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
+                );
+            });
+
             PendulumInputHandler inputHandler = new PendulumInputHandler(
                 lengthInput,
                 gravityInput,
