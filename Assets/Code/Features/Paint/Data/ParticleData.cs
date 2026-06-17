@@ -4,19 +4,18 @@ namespace SwingingPaintBucket.Features.Paint.Data
 {
     public class ParticleData
     {
-        // الخصائص الحركية الأساسية
         public Vector3 position;
         public Vector3 velocity;
         public float lifeRemaining;
         public Color color;
         public float size;
 
-        // خصائص محرك SPH الفيزيائي
+        // خصائص محرك SPH
         public float density;
+        public float inverseDensity; // تحسين الأداء: كاش لتجنب القسمة
         public float pressure;
         public Vector3 forcePhysics;
 
-        // خصائص التوتر السطحي (Müller 2003)
         public Vector3 colorFieldGradient;
         public float colorFieldLaplacian;
 
@@ -28,7 +27,8 @@ namespace SwingingPaintBucket.Features.Paint.Data
             this.color = color;
             this.size = size;
 
-            this.density = 100f;
+            this.density = 1000f;
+            this.inverseDensity = 0.001f;
             this.pressure = 0f;
             this.forcePhysics = Vector3.zero;
             this.colorFieldGradient = Vector3.zero;

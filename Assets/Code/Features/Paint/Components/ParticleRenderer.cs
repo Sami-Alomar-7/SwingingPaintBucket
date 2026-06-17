@@ -13,19 +13,21 @@ namespace SwingingPaintBucket.Features.Paint.Components
         private readonly List<GameObject> _pool = new List<GameObject>();
         private Transform _particleParent;
 
+        // تحسين الأداء: استخدام حظر الخصائص لمنع تسريب الذاكرة (Memory Leak)
+        private MaterialPropertyBlock _propertyBlock;
+        private static readonly int ColorShaderID = Shader.PropertyToID("_Color");
+
         private void Awake()
         {
-            // إنشاء كائن أب لجمع الجسيمات
+            _propertyBlock = new MaterialPropertyBlock();
+
             var parentGO = new GameObject("SPH_ParticlePool");
             _particleParent = parentGO.transform;
-
-            // السطر السحري: إخفاء الكرات والـ Pool تماماً من نافذة الـ Hierarchy لمنع الازدحام
             parentGO.hideFlags = HideFlags.HideInHierarchy;
         }
 
         public void RenderParticles(List<ParticleData> particles, float defaultSize, Color defaultColor)
         {
-            // توسيع الـ Pool إذا زاد عدد الجسيمات الحالية
             while (_pool.Count < particles.Count)
                 _pool.Add(CreateParticleObject());
 
@@ -38,19 +40,20 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
                 go.transform.position = p.position;
 
-                // التحكم في الحجم بناءً على إعدادات الـ Config أو خصائص الجسيم
                 float size = p.size > 0f ? p.size : defaultSize;
                 go.transform.localScale = Vector3.one * Mathf.Max(size, 0.01f);
 
                 Renderer rend = go.GetComponent<Renderer>();
                 if (rend != null)
                 {
-                    // تلوين الجسيم بلونه الخاص (أو الافتراضي)
-                    rend.material.color = (p.color != Color.clear) ? p.color : defaultColor;
+                    // الحل السحري للأداء: تعديل اللون بدون إنشاء نسخة ماتيريال جديدة
+                    rend.GetPropertyBlock(_propertyBlock);
+                    Color targetColor = (p.color != Color.clear) ? p.color : defaultColor;
+                    _propertyBlock.SetColor(ColorShaderID, targetColor);
+                    rend.SetPropertyBlock(_propertyBlock);
                 }
             }
 
-            // إخفاء الجسيمات الزائدة غير المستخدمة حالياً
             for (int i = particles.Count; i < _pool.Count; i++)
             {
                 if (_pool[i].activeSelf) _pool[i].SetActive(false);
@@ -77,14 +80,13 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 go.transform.SetParent(_particleParent);
 
-                // تدمير الـ Collider لمنع تصادم الجسيمات ببعضها فيزيائياً عبر محرك يوينيتي (لأننا نحسب الـ SPH بأنفسنا)
                 Collider col = go.GetComponent<Collider>();
                 if (col != null) Destroy(col);
 
                 Renderer rend = go.GetComponent<Renderer>();
                 if (rend != null)
                 {
-                    rend.material = (particleMaterial != null) ? particleMaterial : new Material(Shader.Find("Unlit/Color"));
+                    rend.sharedMaterial = (particleMaterial != null) ? particleMaterial : new Material(Shader.Find("Unlit/Color"));
                 }
             }
             go.SetActive(false);

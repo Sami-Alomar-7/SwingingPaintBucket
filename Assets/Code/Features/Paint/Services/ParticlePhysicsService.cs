@@ -25,11 +25,15 @@ namespace SwingingPaintBucket.Features.Paint.Services
 
             int count = particles.Count;
 
+            // حساب الثوابت خارج الحلقات تماماً
             float poly6Constant = 315f / (64f * PI * Mathf.Pow(h, 9));
             float spikyGradientConstant = -45f / (PI * Mathf.Pow(h, 6));
             float viscLaplacianConstant = 45f / (PI * Mathf.Pow(h, 6));
 
-            // 1. حساب الكثافة والضغط (Density & Pressure)
+            float poly6GradConst = -945f / (32f * PI * Mathf.Pow(h, 9));
+            float poly6LapConst = -945f / (32f * PI * Mathf.Pow(h, 9));
+
+            // 1. حساب الكثافة والضغط + حساب المقلوب (Inverse)
             for (int i = 0; i < count; i++)
             {
                 ParticleData pi = particles[i];
@@ -51,9 +55,12 @@ namespace SwingingPaintBucket.Features.Paint.Services
                     pi.density = restDensity;
 
                 pi.pressure = k * (pi.density - restDensity);
+
+                // الحل السحري للأداء الفيزيائي: احسب القسمة مرة واحدة هنا فقط!
+                pi.inverseDensity = 1f / pi.density;
             }
 
-            // 2. حساب القوى المشتركة المتماثلة (SPH Forces)
+            // 2. حساب القوى المشتركة المتماثلة (بدون أي عمليات قسمة داخل الحلقة!)
             for (int i = 0; i < count; i++)
             {
                 ParticleData pi = particles[i];
@@ -68,26 +75,27 @@ namespace SwingingPaintBucket.Features.Paint.Services
 
                     ParticleData pj = particles[j];
                     Vector3 diff = pi.position - pj.position;
-                    float r = diff.magnitude;
+                    float r2 = diff.sqrMagnitude;
 
-                    if (r < h && r > 0.0001f)
+                    if (r2 < h2 && r2 > 0.00001f)
                     {
+                        float r = Mathf.Sqrt(r2);
                         Vector3 dir = diff / r;
+                        float hMinusR = h - r;
 
-                        // تدرج الضغط المتوازن (Müller Eq. 10)
-                        float gradW = spikyGradientConstant * Mathf.Pow(h - r, 2);
-                        forcePressure += -mass * (pi.pressure + pj.pressure) / (2f * pj.density) * gradW * dir;
+                        // استبدال القسمة بالضرب في مقلوب الكثافة للمادة الجارة (pj.inverseDensity)
+                        float gradW = spikyGradientConstant * hMinusR * hMinusR;
+                        forcePressure += -mass * (pi.pressure + pj.pressure) * 0.5f * pj.inverseDensity * gradW * dir;
 
-                        // قوة اللزوجة (Müller Eq. 14)
-                        float lapW = viscLaplacianConstant * (h - r);
-                        forceViscosity += mu * mass * (pj.velocity - pi.velocity) / pj.density * lapW;
+                        float lapW = viscLaplacianConstant * hMinusR;
+                        forceViscosity += mu * mass * (pj.velocity - pi.velocity) * pj.inverseDensity * lapW;
 
-                        // حسابات التوتر السطحي (Müller Eq. 16, 18)
-                        float poly6GradTerm = -945f / (32f * PI * Mathf.Pow(h, 9)) * Mathf.Pow(h2 - r * r, 2);
-                        colorFieldGradient += (mass / pj.density) * poly6GradTerm * diff;
+                        float h2MinusR2 = h2 - r2;
+                        float poly6GradTerm = poly6GradConst * h2MinusR2 * h2MinusR2;
+                        colorFieldGradient += mass * pj.inverseDensity * poly6GradTerm * diff;
 
-                        float poly6LapTerm = -945f / (32f * PI * Mathf.Pow(h, 9)) * (h2 - r * r) * (3f * h2 - 7f * r * r);
-                        colorFieldLaplacian += (mass / pj.density) * poly6LapTerm;
+                        float poly6LapTerm = poly6LapConst * h2MinusR2 * (3f * h2 - 7f * r2);
+                        colorFieldLaplacian += mass * pj.inverseDensity * poly6LapTerm;
                     }
                 }
 
@@ -105,7 +113,7 @@ namespace SwingingPaintBucket.Features.Paint.Services
             for (int i = 0; i < count; i++)
             {
                 ParticleData p = particles[i];
-                Vector3 acceleration = (p.forcePhysics / p.density) + new Vector3(0f, -gravity, 0f);
+                Vector3 acceleration = (p.forcePhysics * p.inverseDensity) + new Vector3(0f, -gravity, 0f);
 
                 if (acceleration.magnitude > 150f)
                     acceleration = acceleration.normalized * 150f;
@@ -114,6 +122,7 @@ namespace SwingingPaintBucket.Features.Paint.Services
                 p.position += p.velocity * deltaTime;
                 p.lifeRemaining -= deltaTime;
 
+                // فحص دقيق للحدود
                 if (p.position.y <= surfaceY)
                 {
                     p.position.y = surfaceY;

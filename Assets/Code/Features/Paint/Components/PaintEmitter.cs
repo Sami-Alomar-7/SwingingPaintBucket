@@ -16,7 +16,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
         public Transform surfaceSurface;
         public PaintSurfaceSystem paintSurfaceSystem;
 
-        // التعديل السحري النهائي: استخدام كائن عام (object) لكسر قيود التحويل الصارم وإلغاء خطأ CS0266 تماماً
         public object surfaceService
         {
             get
@@ -27,14 +26,8 @@ namespace SwingingPaintBucket.Features.Paint.Components
             }
             set
             {
-                if (value is PaintSurfaceSystem system)
-                {
-                    paintSurfaceSystem = system;
-                }
-                else if (surfaceSurface != null)
-                {
-                    paintSurfaceSystem = surfaceSurface.GetComponent<PaintSurfaceSystem>();
-                }
+                if (value is PaintSurfaceSystem system) paintSurfaceSystem = system;
+                else if (surfaceSurface != null) paintSurfaceSystem = surfaceSurface.GetComponent<PaintSurfaceSystem>();
             }
         }
 
@@ -58,19 +51,14 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
         private void Awake()
         {
-            if (particleRenderer == null)
-                particleRenderer = GetComponent<ParticleRenderer>();
-
-            if (emissionService == null)
-                emissionService = new DynamicPaintEmissionService();
-            if (particlePhysicsService == null)
-                particlePhysicsService = new ParticlePhysicsService();
+            if (particleRenderer == null) particleRenderer = GetComponent<ParticleRenderer>();
+            if (emissionService == null) emissionService = new DynamicPaintEmissionService();
+            if (particlePhysicsService == null) particlePhysicsService = new ParticlePhysicsService();
 
             if (surfaceSurface != null)
             {
                 _surfaceRenderer = surfaceSurface.GetComponent<Renderer>();
-                if (paintSurfaceSystem == null)
-                    paintSurfaceSystem = surfaceSurface.GetComponent<PaintSurfaceSystem>();
+                if (paintSurfaceSystem == null) paintSurfaceSystem = surfaceSurface.GetComponent<PaintSurfaceSystem>();
             }
         }
 
@@ -95,7 +83,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 {
                     _emissionTimer -= interval;
 
-                    if (spawnPoint != null)
+                    if (spawnPoint != null && _particles.Count < 400)
                     {
                         emissionService.EmitParticle(emissionConfig, spawnPoint.position, bucketVelocity, _particles);
                         massLossNotifier?.NotifyParticleEmitted(emissionConfig.particleMass);
@@ -116,7 +104,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
                 List<int> toRemove = particlePhysicsService.UpdateParticles(_particles, Time.fixedDeltaTime, surfaceY, emissionConfig);
 
-                // ترتيب عكسي لحماية الفهارس من الانهيار أثناء الحذف
+                // ترتيب عكسي للحذف الآمن
                 toRemove.Sort((a, b) => b.CompareTo(a));
 
                 for (int i = 0; i < toRemove.Count; i++)
@@ -126,15 +114,14 @@ namespace SwingingPaintBucket.Features.Paint.Components
                     {
                         ParticleData targetParticle = _particles[index];
 
-                        // فحص الارتطام بالسطح للرسم المباشر
-                        if (targetParticle.position.y <= surfaceY + 0.1f && paintSurfaceSystem != null)
+                        // التحسين الحاسم: ارسم الجسيم فقط وفقط إذا مات بسبب ملامسة الأرض!
+                        // هذا يضمن رسمه مرة واحدة بدلاً من استدعائه في كل إطار فيزيائي متكرر
+                        if (targetParticle.position.y <= surfaceY + 0.05f && paintSurfaceSystem != null)
                         {
                             Vector2 uvCoords = WorldToSurfaceUV(targetParticle.position);
-
-                            // حساب نصف قطر البقعة بناءً على حجم الجسيم في الـ Config
                             int calculatedRadius = Mathf.Max(2, Mathf.RoundToInt(emissionConfig.particleSize * 250f));
-
-                            // تنفيذ الطلاء المباشر على النسيج
+                            
+                            // الطلاء لمرة واحدة عند التدمير
                             paintSurfaceSystem.PaintAtUV(uvCoords, targetParticle.color, calculatedRadius);
                         }
 
@@ -148,10 +135,8 @@ namespace SwingingPaintBucket.Features.Paint.Components
         {
             if (_surfaceRenderer == null) return Vector2.zero;
             Bounds bounds = _surfaceRenderer.bounds;
-
             float u = (worldPosition.x - bounds.min.x) / bounds.size.x;
             float z = (worldPosition.z - bounds.min.z) / bounds.size.z;
-
             return new Vector2(Mathf.Clamp01(u), Mathf.Clamp01(z));
         }
 
@@ -169,7 +154,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
         }
 
         public void StopSimulation() => _isRunning = false;
-
         public void ClearParticles()
         {
             _particles.Clear();
