@@ -4,11 +4,12 @@ using SwingingPaintBucket.Features.Pendulum.Data;
 using SwingingPaintBucket.Features.Pendulum.Interfaces;
 using SwingingPaintBucket.Features.Rope.Interfaces;
 using SwingingPaintBucket.Features.ExternalForces.Interfaces;
+using SwingingPaintBucket.Features.ExternalForces.Services;
 using SwingingPaintBucket.Features.Paint.Components;
 using SwingingPaintBucket.Features.Paint.Interfaces;
 using SwingingPaintBucket.Features.Pendulum.Services;
 using SwingingPaintBucket.Features.Rope.Data;
-using SwingingPaintBucket.Features.Surface.Components; // تم إضافة فضاء الأسماء الخاص بنظام السطح الجديد
+using SwingingPaintBucket.Features.Surface.Components;
 
 namespace SwingingPaintBucket.Features.Pendulum.Components
 {
@@ -31,7 +32,6 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
         [SerializeField] private UnityEngine.UI.Button _startButton;
         [SerializeField] private UnityEngine.UI.Button _resetButton;
 
-        // ─── PUBLIC COMPOSITION PROPERTIES FOR EDITOR COMPOSITION ───
         public float PivotY { get => _pivotY; set => _pivotY = value; }
         public Transform PivotTransform { get => _pivotTransform; set => _pivotTransform = value; }
         public Transform BucketTransform { get => _bucketTransform; set => _bucketTransform = value; }
@@ -61,11 +61,17 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
         {
             if (_inputHandler == null) _inputHandler = new PendulumInputHandler();
             if (PhysicsEngine == null) PhysicsEngine = new PendulumPhysicsService();
+
             if (MassProvider == null) MassProvider = new MassSystem();
+
+            ForceProviders = new List<IForceProvider>
+            {
+                new GravityForce(MassProvider), 
+                new DragForce()               
+            };
 
             if (_paintEmitter == null) _paintEmitter = FindAnyObjectByType<PaintEmitter>();
 
-            // إصلاح الربط التلقائي لنظام الطلاء المعتمد على البنية الجديدة المفككة
             if (_paintEmitter != null && _paintEmitter.paintSurfaceSystem == null)
             {
                 _paintEmitter.paintSurfaceSystem = FindAnyObjectByType<PaintSurfaceSystem>();
@@ -112,10 +118,16 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
 
             Vector3 pivotPos = _pivotTransform != null ? _pivotTransform.position : new Vector3(0f, _pivotY, 0f);
             float length = _config != null ? _config.RopeLength : 3f;
+
             _state.BucketPosition = pivotPos + length * new Vector3(Mathf.Sin(_state.Theta), -Mathf.Cos(_state.Theta), 0f);
 
             Vector3 tangentialDir = new Vector3(Mathf.Cos(_state.Theta), Mathf.Sin(_state.Theta), 0f);
             _state.Velocity = tangentialDir * (_state.Omega * length);
+
+            if (_config != null && _config.CurrentRopeType != RopeType.Rigid)
+            {
+                _state.Velocity.z = 1.5f;
+            }
 
             if (MassProvider is MassSystem massSystem && _config != null)
             {
@@ -137,10 +149,7 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
 
             _isRunning = true;
 
-            if (_paintEmitter != null)
-            {
-                _paintEmitter.StartSimulation();
-            }
+            if (_paintEmitter != null) _paintEmitter.StartSimulation();
         }
 
         public void ResetSimulation()
@@ -174,10 +183,7 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             if (_bucketTransform != null)
             {
                 Renderer bucketRenderer = _bucketTransform.GetComponent<Renderer>();
-                if (bucketRenderer != null)
-                {
-                    bucketRenderer.material.color = Color.black;
-                }
+                if (bucketRenderer != null) bucketRenderer.material.color = Color.black;
             }
 
             if (_paintEmitter != null)
@@ -228,12 +234,10 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             else if (_config.CurrentRopeType == RopeType.Bungee)
             {
                 const float transitionZone = 0.05f;
-
                 if (deltaL > 0f)
                 {
                     float transitionFactor = Mathf.Clamp01(deltaL / transitionZone);
                     float smoothFactor = transitionFactor * transitionFactor * (3f - 2f * transitionFactor);
-
                     springForce = -_config.RopeConfig.SpringStiffness * deltaL * smoothFactor * radialDir;
                 }
             }
@@ -249,29 +253,33 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             _state.Velocity += (totalForce / totalMass) * dt;
             _state.BucketPosition += _state.Velocity * dt;
 
-            _state.BucketPosition.z = 0f;
-            _state.Velocity.z = 0f;
-
-            _state.Theta = Mathf.Atan2(_state.BucketPosition.x - pivotPos.x, pivotPos.y - _state.BucketPosition.y);
-            _state.Omega = Vector3.Dot(_state.Velocity, new Vector3(Mathf.Cos(_state.Theta), Mathf.Sin(_state.Theta), 0f)) / currentLength;
+            Vector3 planarProj = new Vector3(_state.BucketPosition.x - pivotPos.x, 0f, _state.BucketPosition.z - pivotPos.z);
+            _state.Theta = Mathf.Atan2(planarProj.magnitude * Mathf.Sign(planarProj.x), pivotPos.y - _state.BucketPosition.y);
+            _state.Omega = Vector3.Dot(_state.Velocity, new Vector3(Mathf.Cos(_state.Theta), Mathf.Sin(_state.Theta), 0f)) / (currentLength > 0.01f ? currentLength : 1f);
         }
 
         public void UpdateBucketPosition(Vector3 worldPosition)
         {
-            if (_bucketTransform != null) _bucketTransform.position = worldPosition;
+            if (_bucketTransform != null)
+            {
+                _bucketTransform.position = worldPosition;
+
+                if (_pivotTransform != null)
+                {
+                    Vector3 pivotPos = _pivotTransform.position;
+                    Vector3 toPivot = (pivotPos - worldPosition).normalized;
+
+                    if (toPivot != Vector3.zero)
+                    {
+                        _bucketTransform.up = toPivot; 
+                    }
+                }
+            }
         }
 
         public void UpdateRope(Vector3 pivotPos, Vector3 bucketPos)
         {
-            if (Rope != null)
-            {
-                Rope.UpdateRope(pivotPos, bucketPos);
-            }
-        }
-
-        private void ValidateDependencies()
-        {
-            if (PhysicsEngine == null) Debug.LogError("[PendulumController] PhysicsEngine is unassigned.", this);
+            if (Rope != null) Rope.UpdateRope(pivotPos, bucketPos);
         }
 
         public bool IsRunning() => _isRunning;

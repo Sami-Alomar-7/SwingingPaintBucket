@@ -42,6 +42,12 @@ namespace SwingingPaintBucket.Features.Paint.Components
         [Header("Emission Configurations")]
         public PaintEmissionConfig emissionConfig = new PaintEmissionConfig();
 
+        [Header("UV Mapping Adjustments")]
+        [Tooltip("فعلي هذا الخيار إذا كانت البقع معكوسة يميناً ويساراً")]
+        public bool invertX = false;
+        [Tooltip("فعلي هذا الخيار إذا كانت البقع معكوسة للأمام والخلف")]
+        public bool invertZ = false;
+
         private readonly List<ParticleData> _particles = new List<ParticleData>();
         private float _emissionTimer;
         private Vector3 _previousBucketPosition;
@@ -104,7 +110,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
                 List<int> toRemove = particlePhysicsService.UpdateParticles(_particles, Time.fixedDeltaTime, surfaceY, emissionConfig);
 
-                // ترتيب عكسي للحذف الآمن
                 toRemove.Sort((a, b) => b.CompareTo(a));
 
                 for (int i = 0; i < toRemove.Count; i++)
@@ -114,15 +119,11 @@ namespace SwingingPaintBucket.Features.Paint.Components
                     {
                         ParticleData targetParticle = _particles[index];
 
-                        // التحسين الحاسم: ارسم الجسيم فقط وفقط إذا مات بسبب ملامسة الأرض!
-                        // هذا يضمن رسمه مرة واحدة بدلاً من استدعائه في كل إطار فيزيائي متكرر
                         if (targetParticle.position.y <= surfaceY + 0.05f && paintSurfaceSystem != null)
                         {
                             Vector2 uvCoords = WorldToSurfaceUV(targetParticle.position);
-                            int calculatedRadius = Mathf.Max(2, Mathf.RoundToInt(emissionConfig.particleSize * 250f));
-                            
-                            // الطلاء لمرة واحدة عند التدمير
-                            paintSurfaceSystem.PaintAtUV(uvCoords, targetParticle.color, calculatedRadius);
+
+                            paintSurfaceSystem.PaintAtUV(uvCoords, targetParticle.color, 1);
                         }
 
                         _particles.RemoveAt(index);
@@ -131,12 +132,18 @@ namespace SwingingPaintBucket.Features.Paint.Components
             }
         }
 
+ 
         private Vector2 WorldToSurfaceUV(Vector3 worldPosition)
         {
             if (_surfaceRenderer == null) return Vector2.zero;
             Bounds bounds = _surfaceRenderer.bounds;
+
             float u = (worldPosition.x - bounds.min.x) / bounds.size.x;
             float z = (worldPosition.z - bounds.min.z) / bounds.size.z;
+
+            if (invertX) u = 1f - u;
+            if (invertZ) z = 1f - z;
+
             return new Vector2(Mathf.Clamp01(u), Mathf.Clamp01(z));
         }
 

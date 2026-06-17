@@ -3,14 +3,9 @@ using SwingingPaintBucket.Features.Surface.Interfaces;
 
 namespace SwingingPaintBucket.Features.Surface.Services
 {
-    /// <summary>
-    /// Pure stateless implementation of the paint application service.
-    /// Follows the Single Responsibility Principle: treats texture stamping as a pure processing operations 
-    /// step without capturing canvas allocation states.
-    /// </summary>
+
     public class PaintApplicationService : IPaintSurfaceService
     {
-        /// <inheritdoc />
         public void Paint(Texture2D texture, Vector2 uv, Color color, int brushRadius)
         {
             if (texture == null) return;
@@ -37,7 +32,6 @@ namespace SwingingPaintBucket.Features.Surface.Services
                     float dx = x - centerPixelX;
                     float dy = y - centerPixelY;
 
-                    // Compute precise pixel offset distance within the specified circular brush footprint
                     if (dx * dx + dy * dy <= maxRadiusSquared)
                     {
                         texture.SetPixel(x, y, color);
@@ -46,7 +40,6 @@ namespace SwingingPaintBucket.Features.Surface.Services
                 }
             }
 
-            // 4. Force immediate memory allocation commit from CPU buffers over to the GPU VRAM
             if (contentAltered)
             {
                 texture.Apply();

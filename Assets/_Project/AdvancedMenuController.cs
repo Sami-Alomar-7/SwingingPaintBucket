@@ -4,9 +4,7 @@ using UnityEngine.SceneManagement;
 public class AdvancedMenuController : MonoBehaviour
 {
     [Header("زر الإعدادات الرئيسي والقائمة الكاملة")]
-    // زر العنوان الأساسي (System Config) - سيبقى ظاهراً للفتح والإغلاق دائماً
     public GameObject mainSettingsButton;
-    // الـ Panel الأب التي تحتوي على الأزرار الفرعية وأزرار التحكم
     public GameObject mainSettingsMenuPanel;
 
     [Header("قوائم المحتوى للأقسام (المستوى الثالث)")]
@@ -21,30 +19,23 @@ public class AdvancedMenuController : MonoBehaviour
 
     private bool isPaused = false;
 
-    /// <summary>
-    /// تابع زر الإعدادات الأساسي: يفتح ويغلق القائمة التحتية ايمتى ما بدكِ بدون إخفاء الزر نفسه
-    /// </summary>
     public void ToggleMainSettingsMenu()
     {
         if (mainSettingsMenuPanel != null)
         {
-            // عكس حالة القائمة (إذا مفتوحة تغلق، والعكس)
             bool isMenuOpen = !mainSettingsMenuPanel.activeSelf;
 
             mainSettingsMenuPanel.SetActive(isMenuOpen);
 
-            // إذا أغلقنا القائمة، نغلق تلقائياً كافة المحتويات الفرعية لتنكمش اللوحة تماماً
             if (!isMenuOpen)
             {
                 CloseAllSubMenus();
             }
 
-            // إجبار الـ UI على إعادة حساب الأبعاد والانكماش فوراً
             Canvas.ForceUpdateCanvases();
         }
     }
 
-    // توابع فتح وإغلاق الأقسام الفرعية مع تحديث فوري للأبعاد
     public void ToggleRope() { ropeContent.SetActive(!ropeContent.activeSelf); Canvas.ForceUpdateCanvases(); }
     public void ToggleBucket() { bucketContent.SetActive(!bucketContent.activeSelf); Canvas.ForceUpdateCanvases(); }
     public void ToggleFluid() { fluidContent.SetActive(!fluidContent.activeSelf); Canvas.ForceUpdateCanvases(); }
@@ -53,7 +44,6 @@ public class AdvancedMenuController : MonoBehaviour
 
     void Start()
     {
-        // عند تشغيل اللعبة: زر الإعدادات الأساسي ظاهر، بينما القائمة التحتية ومحتوياتها مخفية تماماً
         if (mainSettingsMenuPanel != null) mainSettingsMenuPanel.SetActive(false);
         if (mainSettingsButton != null) mainSettingsButton.SetActive(true);
 

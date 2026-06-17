@@ -20,9 +20,7 @@ using UnityEngine.InputSystem.UI;
 
 namespace SwingingPaintBucket.Editor
 {
-    /// <summary>
-    /// Scene builder that creates a basic working pendulum scene with an enhanced, modern UI dashboard layout.
-    /// </summary>
+
     public class SceneBuilder
     {
         [MenuItem("SwingingPaintBucket/Build Main Scene")]
@@ -285,16 +283,11 @@ namespace SwingingPaintBucket.Editor
             pendulumController.MassProvider = massSystem;
             pendulumController.ForceProviders = new List<IForceProvider>
             {
-                new GravityForce(),
+                new GravityForce(massSystem),
                 new DragForce(0.05f)
             };
 
-            var paintAppService = new PaintApplicationService();
-            Texture2D surfaceTexture = surfaceSystem.GetTexture();
-            if (surfaceTexture != null)
-            {
-                paintEmitter.surfaceService = paintAppService;
-            }
+
 
             EditorUtility.SetDirty(pendulumController);
             EditorUtility.SetDirty(paintEmitter);

@@ -1,14 +1,9 @@
-namespace SwingingPaintBucket.Features.Rope.Data
+﻿namespace SwingingPaintBucket.Features.Rope.Data
 {
-    /// <summary>
-    /// Preset configuration values for different rope types.
-    /// Maps rope types to their physical properties (stiffness and damping).
-    /// </summary>
+
     public static class RopeTypePresets
     {
-        /// <summary>
-        /// Gets the spring stiffness coefficient for a given rope type.
-        /// </summary>
+
         public static float GetSpringStiffness(RopeType ropeType)
         {
             return ropeType switch
@@ -20,9 +15,7 @@ namespace SwingingPaintBucket.Features.Rope.Data
             };
         }
 
-        /// <summary>
-        /// Gets the rope damping coefficient for a given rope type.
-        /// </summary>
+   
         public static float GetRopeDamping(RopeType ropeType)
         {
             return ropeType switch
@@ -34,9 +27,7 @@ namespace SwingingPaintBucket.Features.Rope.Data
             };
         }
 
-        /// <summary>
-        /// Applies the preset values to a rope configuration based on the current rope type.
-        /// </summary>
+ 
         public static void ApplyPreset(RopeConfig config, RopeType ropeType)
         {
             if (config == null) return;

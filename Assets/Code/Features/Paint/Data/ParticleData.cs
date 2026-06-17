@@ -12,7 +12,7 @@ namespace SwingingPaintBucket.Features.Paint.Data
 
         // خصائص محرك SPH
         public float density;
-        public float inverseDensity; // تحسين الأداء: كاش لتجنب القسمة
+        public float inverseDensity;
         public float pressure;
         public Vector3 forcePhysics;
 

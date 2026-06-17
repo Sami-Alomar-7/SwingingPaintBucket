@@ -1,130 +1,123 @@
-using System;
 using UnityEngine;
 
 namespace SwingingPaintBucket.Features.Surface.Components
 {
-    /// <summary>
-    /// Manages a paintable texture on the ground plane.
-    ///
-    /// Key fix: creates a NEW material instance (not sharedMaterial) so we never
-    /// corrupt the project asset. The texture is applied to that instance only.
-    /// </summary>
+    public struct SurfaceCell
+    {
+        public float Absorption;
+        public float Roughness;
+        public float PaintAccumulation;
+        public Color CurrentColor;
+    }
+
+    [RequireComponent(typeof(Renderer))]
     public class PaintSurfaceSystem : MonoBehaviour
     {
-        [Header("Surface Settings")]
-        [Tooltip("Resolution of the paint texture (higher = more detail, more memory)")]
+        [Header("Surface Resolution")]
         public int textureSize = 512;
 
-        [Tooltip("Base color of the surface before any paint is applied")]
+        [Header("Base Material Properties")]
+        [Range(0f, 1f)] public float defaultAbsorption = 0.4f;
+        [Range(0f, 1f)] public float defaultRoughness = 0.2f;
         public Color baseColor = Color.white;
 
-        // Internal state
+        [Range(0.05f, 1f)] public float paintSizeMultiplier = 0.2f;
+
+        private SurfaceCell[,] _surfaceGrid;
         private Texture2D _texture;
-        private Renderer  _rend;
-        private Material  _instanceMaterial;   // owned by this component, not shared
-
-        /// <summary>Returns the live texture being painted on.</summary>
-        public Texture2D GetTexture() => _texture;
-
-        // ─── Unity callbacks ─────────────────────────────────────────────────────
+        private Renderer _rend;
+        private Material _instanceMaterial;
 
         private void Awake()
         {
             InitializeSurface();
         }
 
-        // ─── Public API ──────────────────────────────────────────────────────────
-
-        /// <summary>
-        /// (Re)creates the texture and resets it to the base color.
-        /// Call this to clear all paint marks.
-        /// </summary>
         public void InitializeSurface()
         {
             _rend = GetComponent<Renderer>();
-            if (_rend == null)
-                _rend = GetComponentInChildren<Renderer>();
+            _surfaceGrid = new SurfaceCell[textureSize, textureSize];
 
-            // Create a fresh texture
             _texture = new Texture2D(textureSize, textureSize, TextureFormat.RGBA32, false);
-            _texture.wrapMode   = TextureWrapMode.Clamp;
+            _texture.wrapMode = TextureWrapMode.Clamp;
             _texture.filterMode = FilterMode.Bilinear;
-            FillTexture(baseColor);
 
-            // Create an INSTANCE material so we never touch the shared project asset
+            Color[] pixels = new Color[textureSize * textureSize];
+            int idx = 0;
+
+            for (int y = 0; y < textureSize; y++)
+            {
+                for (int x = 0; x < textureSize; x++)
+                {
+                    _surfaceGrid[x, y].Absorption = defaultAbsorption;
+                    _surfaceGrid[x, y].Roughness = defaultRoughness;
+                    _surfaceGrid[x, y].PaintAccumulation = 0f;
+                    _surfaceGrid[x, y].CurrentColor = baseColor;
+
+                    pixels[idx++] = baseColor;
+                }
+            }
+
+            _texture.SetPixels(pixels);
+            _texture.Apply();
+
             if (_rend != null)
             {
-                // Instantiate from the current shared material (preserves shader/settings)
                 _instanceMaterial = new Material(_rend.sharedMaterial);
-                _rend.material    = _instanceMaterial;   // assign instance, not shared
+                _rend.material = _instanceMaterial;
 
-                // Apply our texture to the instance
-                ApplyTexture();
+                if (_instanceMaterial.HasProperty("_BaseMap")) _instanceMaterial.SetTexture("_BaseMap", _texture);
+                if (_instanceMaterial.HasProperty("_MainTex")) _instanceMaterial.SetTexture("_MainTex", _texture);
             }
         }
 
-        /// <summary>
-        /// Paints a splat at the given UV coordinate with the given color.
-        /// </summary>
-        /// <param name="uv">UV in [0,1]×[0,1]</param>
-        /// <param name="color">Paint color</param>
-        public void Paint(Vector2 uv, Color color)
+        public void PaintAtUV(Vector2 uv, Color liquidColor, int baseRadius)
+        {
+            PaintAtUVCoordinates(uv, liquidColor, baseRadius);
+        }
+
+        public void PaintAtUVCoordinates(Vector2 uv, Color liquidColor, int baseRadius)
         {
             if (_texture == null) return;
 
             int cx = Mathf.Clamp((int)(uv.x * textureSize), 0, textureSize - 1);
             int cy = Mathf.Clamp((int)(uv.y * textureSize), 0, textureSize - 1);
 
-            DrawCircle(cx, cy, radius: 8, color);
-            _texture.Apply();
-        }
+            SurfaceCell targetCell = _surfaceGrid[cx, cy];
 
-        // ─── Private helpers ─────────────────────────────────────────────────────
+            float surfaceEffectFactor = 1f + (targetCell.Absorption * 0.4f) - (targetCell.Roughness * 0.2f);
+            int finalRadius = Mathf.RoundToInt(baseRadius * surfaceEffectFactor * paintSizeMultiplier);
+            finalRadius = Mathf.Max(1, finalRadius);
 
-        private void FillTexture(Color fill)
-        {
-            Color[] pixels = new Color[textureSize * textureSize];
-            for (int i = 0; i < pixels.Length; i++)
-                pixels[i] = fill;
-            _texture.SetPixels(pixels);
-            _texture.Apply();
-        }
+            int r2 = finalRadius * finalRadius;
+            bool contentAltered = false;
 
-        private void ApplyTexture()
-        {
-            if (_instanceMaterial == null || _texture == null) return;
-
-            // URP uses _BaseMap; Built-in uses _MainTex — set both to be safe
-            if (_instanceMaterial.HasProperty("_BaseMap"))
-                _instanceMaterial.SetTexture("_BaseMap", _texture);
-            if (_instanceMaterial.HasProperty("_MainTex"))
-                _instanceMaterial.SetTexture("_MainTex", _texture);
-        }
-
-        private void DrawCircle(int cx, int cy, int radius, Color color)
-        {
-            int r2 = radius * radius;
-            for (int dx = -radius; dx <= radius; dx++)
+            for (int dx = -finalRadius; dx <= finalRadius; dx++)
             {
-                for (int dy = -radius; dy <= radius; dy++)
+                for (int dy = -finalRadius; dy <= finalRadius; dy++)
                 {
                     if (dx * dx + dy * dy > r2) continue;
 
                     int px = cx + dx;
                     int py = cy + dy;
-                    if (px < 0 || px >= textureSize || py < 0 || py >= textureSize) continue;
 
-                    // Alpha-blend new color over existing pixel for a softer look
-                    Color existing = _texture.GetPixel(px, py);
-                    Color blended  = Color.Lerp(existing, color, 0.85f);
-                    _texture.SetPixel(px, py, blended);
+                    if (px >= 0 && px < textureSize && py >= 0 && py < textureSize)
+                    {
+                        _surfaceGrid[px, py].PaintAccumulation += 0.1f;
+
+                        Color blendedColor = Color.Lerp(_surfaceGrid[px, py].CurrentColor, liquidColor, 0.8f);
+                        _surfaceGrid[px, py].CurrentColor = blendedColor;
+
+                        _texture.SetPixel(px, py, blendedColor);
+                        contentAltered = true;
+                    }
                 }
             }
-        }
 
-        internal void PaintAtUV(Vector2 uvCoords, Color color, int calculatedRadius)
-        {
-            throw new NotImplementedException();
+            if (contentAltered)
+            {
+                _texture.Apply(false);
+            }
         }
     }
 }

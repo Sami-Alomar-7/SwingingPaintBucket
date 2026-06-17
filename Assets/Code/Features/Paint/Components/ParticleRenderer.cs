@@ -13,7 +13,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
         private readonly List<GameObject> _pool = new List<GameObject>();
         private Transform _particleParent;
 
-        // تحسين الأداء: استخدام حظر الخصائص لمنع تسريب الذاكرة (Memory Leak)
         private MaterialPropertyBlock _propertyBlock;
         private static readonly int ColorShaderID = Shader.PropertyToID("_Color");
 
@@ -46,7 +45,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 Renderer rend = go.GetComponent<Renderer>();
                 if (rend != null)
                 {
-                    // الحل السحري للأداء: تعديل اللون بدون إنشاء نسخة ماتيريال جديدة
                     rend.GetPropertyBlock(_propertyBlock);
                     Color targetColor = (p.color != Color.clear) ? p.color : defaultColor;
                     _propertyBlock.SetColor(ColorShaderID, targetColor);

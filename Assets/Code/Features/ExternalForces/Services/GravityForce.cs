@@ -1,17 +1,25 @@
 using UnityEngine;
 using SwingingPaintBucket.Features.ExternalForces.Interfaces;
 using SwingingPaintBucket.Features.Pendulum.Data;
+using SwingingPaintBucket.Features.Pendulum.Interfaces;
 
 namespace SwingingPaintBucket.Features.ExternalForces.Services
 {
-    /// <summary>
-    /// Returns the gravitational force F = m·g in the downward direction.
-    /// </summary>
+
     public class GravityForce : IForceProvider
     {
+        private readonly IMassProvider _massProvider;
+
+        public GravityForce(IMassProvider massProvider)
+        {
+            _massProvider = massProvider;
+        }
+
         public Vector3 GetForce(in PendulumState state, in PendulumConfig config)
         {
-            return new Vector3(0f, -config.BaseMass * config.Gravity, 0f);
+            float currentTotalMass = _massProvider != null ? _massProvider.GetTotalMass() : config.BaseMass;
+
+            return new Vector3(0f, -currentTotalMass * config.Gravity, 0f);
         }
     }
 }

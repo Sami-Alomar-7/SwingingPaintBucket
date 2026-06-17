@@ -56,11 +56,9 @@ namespace SwingingPaintBucket.Features.Paint.Services
 
                 pi.pressure = k * (pi.density - restDensity);
 
-                // الحل السحري للأداء الفيزيائي: احسب القسمة مرة واحدة هنا فقط!
                 pi.inverseDensity = 1f / pi.density;
             }
 
-            // 2. حساب القوى المشتركة المتماثلة (بدون أي عمليات قسمة داخل الحلقة!)
             for (int i = 0; i < count; i++)
             {
                 ParticleData pi = particles[i];
@@ -83,7 +81,6 @@ namespace SwingingPaintBucket.Features.Paint.Services
                         Vector3 dir = diff / r;
                         float hMinusR = h - r;
 
-                        // استبدال القسمة بالضرب في مقلوب الكثافة للمادة الجارة (pj.inverseDensity)
                         float gradW = spikyGradientConstant * hMinusR * hMinusR;
                         forcePressure += -mass * (pi.pressure + pj.pressure) * 0.5f * pj.inverseDensity * gradW * dir;
 
@@ -109,7 +106,6 @@ namespace SwingingPaintBucket.Features.Paint.Services
                 pi.forcePhysics = forcePressure + forceViscosity + forceSurfaceTension;
             }
 
-            // 3. التكامل الحركي وفحص الحدود الأرضية للرسم
             for (int i = 0; i < count; i++)
             {
                 ParticleData p = particles[i];
@@ -122,7 +118,6 @@ namespace SwingingPaintBucket.Features.Paint.Services
                 p.position += p.velocity * deltaTime;
                 p.lifeRemaining -= deltaTime;
 
-                // فحص دقيق للحدود
                 if (p.position.y <= surfaceY)
                 {
                     p.position.y = surfaceY;

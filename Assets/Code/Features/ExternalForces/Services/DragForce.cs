@@ -4,29 +4,37 @@ using SwingingPaintBucket.Features.Pendulum.Data;
 
 namespace SwingingPaintBucket.Features.ExternalForces.Services
 {
-    /// <summary>
-    /// Returns a drag force proportional to the negative bucket velocity: F = -k·v.
-    /// </summary>
+ 
     public class DragForce : IForceProvider
     {
-        private readonly float _dragCoefficient;
+        private readonly float _fallbackDragCoefficient;
 
-        public DragForce(float dragCoefficient = 0.1f) => _dragCoefficient = dragCoefficient;
+        public DragForce(float dragCoefficient = 0.1f)
+        {
+            _fallbackDragCoefficient = dragCoefficient;
+        }
 
         public Vector3 GetForce(in PendulumState state, in PendulumConfig config)
         {
-            // Calculate tangential velocity from angular velocity: v = ω * r
-            // The bucket moves in an arc, so velocity is perpendicular to the rope
-            float tangentialSpeed = state.Omega * config.RopeLength;
-            
-            // Velocity direction is perpendicular to the angle (tangent to the arc)
-            // At angle θ, the tangent direction is (cos(θ), 0, sin(θ)) for motion in X-Z plane
-            Vector3 bucketVelocity = new Vector3(
-                tangentialSpeed * Mathf.Cos(state.Theta),
-                0f,
-                tangentialSpeed * Mathf.Sin(state.Theta));
+            float c = config.DampingCoefficient > 0f ? config.DampingCoefficient : _fallbackDragCoefficient;
 
-            return -_dragCoefficient * bucketVelocity;
+            Vector3 bucketVelocity;
+
+            if (state.Velocity != Vector3.zero)
+            {
+                bucketVelocity = state.Velocity;
+            }
+            else
+            {
+                float tangentialSpeed = state.Omega * config.RopeLength;
+                bucketVelocity = new Vector3(
+                    tangentialSpeed * Mathf.Cos(state.Theta),
+                    tangentialSpeed * Mathf.Sin(state.Theta),
+                    0f
+                );
+            }
+
+            return -c * bucketVelocity;
         }
     }
 }
