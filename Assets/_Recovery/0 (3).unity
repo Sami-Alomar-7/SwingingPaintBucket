@@ -332,8 +332,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: df860d5f3b96c4340b096186a254eed0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SwingingPaintBucket.Features.Surface.Components.PaintSurfaceSystem
-  materialType: 0
-  textureSize: 1024
+  textureSize: 512
+  defaultAbsorption: 0.5
+  defaultRoughness: 0.2
   baseColor: {r: 0.995315, g: 1, b: 0.92156863, a: 1}
   paintSizeMultiplier: 0.2
 --- !u!4 &607616117

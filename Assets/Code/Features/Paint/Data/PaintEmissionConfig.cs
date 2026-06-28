@@ -15,17 +15,17 @@ namespace SwingingPaintBucket.Features.Paint.Data
         public float particleSize = 0.14f;
         public float particleLife = 6f;
         public Vector3 splashRange = Vector3.zero; 
-        public float particleMass = 0.02f;
-        public float gravity = 9.81f;
+        public float particleMass = 0.001f;
+        public float gravity = 15f;
 
         [Tooltip("Hole diameter used by SceneBuilder initialization")]
         public float holeDiameter = 0.05f;
 
         [Header("SPH Fluid Physics Settings (Müller 2003)")]
-        public float smoothingRadius = 0.25f; 
-        public float restDensity = 1000f;     
-        public float pressureStiffness = 400f;
-        public float viscosity = 4.5f;       
-        public float surfaceTension = 1.2f;
+        public float smoothingRadius = 0.1f; 
+        public float restDensity = 100f;     
+        public float pressureStiffness = 150f;
+        public float viscosity = 0.1f;       
+        public float surfaceTension = 0.05f;
     }
 }

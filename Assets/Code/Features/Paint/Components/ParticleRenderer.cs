@@ -39,8 +39,12 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
                 go.transform.position = p.position;
 
+                // داخل حلقة RenderParticles في ملف ParticleRenderer.cs
+                // تم تعديل حساب الحجم لجعل الجزيئات القريبة تتداخل بشكل أنعم
                 float size = p.size > 0f ? p.size : defaultSize;
-                go.transform.localScale = Vector3.one * Mathf.Max(size, 0.01f);
+                // زيادة طفيفة في المقياس البصري فقط لملء الفراغات بين الجزيئات المتقاربة (تأثير الالتحام)
+                float visualScale = size * 1.25f;
+                go.transform.localScale = Vector3.one * Mathf.Max(visualScale, 0.01f);
 
                 Renderer rend = go.GetComponent<Renderer>();
                 if (rend != null)

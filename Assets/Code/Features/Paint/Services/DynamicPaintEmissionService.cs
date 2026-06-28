@@ -20,6 +20,12 @@ namespace SwingingPaintBucket.Features.Paint.Services
         {
             if (particles == null) return;
 
+            // تحسين: توزيع جزيئات الطلاء بشكل دائري عشوائي بناءً على قطر فتحة الدلو holeDiameter
+            float radius = config.holeDiameter * 0.5f;
+            Vector2 randomCircle = Random.insideUnitCircle * radius;
+            // إسقاط التوزيع العشوائي على المستوي الأفقي (X, Z) للخروج الطبيعي لأسفل
+            Vector3 offsetPosition = spawnPosition + new Vector3(randomCircle.x, 0f, randomCircle.y);
+
             float randomX = Random.Range(-config.splashRange.x, config.splashRange.x);
             float randomY = Random.Range(-config.splashRange.y, 0f);
             float randomZ = Random.Range(-config.splashRange.z, config.splashRange.z);
@@ -28,7 +34,7 @@ namespace SwingingPaintBucket.Features.Paint.Services
             Vector3 initialVelocity = bucketVelocity + splashVelocity;
 
             ParticleData newParticle = new ParticleData(
-                spawnPosition,
+                offsetPosition, // استخدام الموضع الموزع الجديد
                 initialVelocity,
                 config.particleLife,
                 config.particleColor,

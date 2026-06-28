@@ -336,6 +336,14 @@ MonoBehaviour:
   textureSize: 1024
   baseColor: {r: 0.995315, g: 1, b: 0.92156863, a: 1}
   paintSizeMultiplier: 0.2
+  woodMaterial: {fileID: 0}
+  metalMaterial: {fileID: 0}
+  paperMaterial: {fileID: 0}
+  glassMaterial: {fileID: 0}
+  woodBaseTexture: {fileID: 0}
+  metalBaseTexture: {fileID: 0}
+  paperBaseTexture: {fileID: 0}
+  glassBaseTexture: {fileID: 0}
 --- !u!4 &607616117
 Transform:
   m_ObjectHideFlags: 0

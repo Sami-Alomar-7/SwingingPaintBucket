@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System.Collections.Generic;
 using SwingingPaintBucket.Features.Pendulum.Data;
 using SwingingPaintBucket.Features.Pendulum.Interfaces;
@@ -114,6 +114,9 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             if (_config != null && _pivotTransform != null)
             {
                 _config.PivotPosition = _pivotTransform.position;
+
+                // ربط طول الحبل الحقيقي المدخل بـ الـ RestLength الخاص بحسابات المطاطية والفيزياء
+                _config.RopeConfig.RestLength = _config.RopeLength;
             }
 
             Vector3 pivotPos = _pivotTransform != null ? _pivotTransform.position : new Vector3(0f, _pivotY, 0f);
@@ -142,16 +145,22 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
                 if (bucketRenderer != null) bucketRenderer.material.color = Color.black;
             }
 
-            if (_config != null && _config.CurrentRopeType != RopeType.Rigid)
+            // تطبيق الـ Presets وتحديث شكل الحبل فوراً
+            if (_config != null)
             {
                 RopeTypePresets.ApplyPreset(_config.RopeConfig, _config.CurrentRopeType);
+
+                // إرسال الإعدادات البصرية الجديدة للحبل ليتغير لونه وسماكته في المشهد
+                if (Rope is SwingingPaintBucket.Features.Rope.Components.RopeRenderer visualRope)
+                {
+                    visualRope.ApplyVisualConfig(_config.RopeConfig);
+                }
             }
 
             _isRunning = true;
 
             if (_paintEmitter != null) _paintEmitter.StartSimulation();
         }
-
         public void ResetSimulation()
         {
             _isRunning = false;
@@ -193,6 +202,7 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             }
         }
 
+        // واجبي دالة دمج الحركة وحصر الارتفاع (IntegrateState) لتصبح هكذا لمنع اختراق الأرض:
         private void IntegrateState(float dt, Vector3 pivotPos, float length)
         {
             if (_config != null && _config.CurrentRopeType == RopeType.Rigid)
@@ -208,10 +218,20 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
                 IntegrateElasticPhysics(dt, pivotPos, length);
             }
 
+            // 🛑 نظام حماية الأرض الافتراضي (Ground Collision Guard)
+            // نفترض أن الأرض تقع عند الموضع Y = 0 أو مستوى سطح اللوحة النشطة لديكِ
+            float groundLevel = 0.2f; // يمكنكِ تعديل هذا الرقم بناءً على ارتفاع سطح اللوحة في مشروعكِ
+
+            if (_state.BucketPosition.y < groundLevel)
+            {
+                _state.BucketPosition.y = groundLevel; // منع اختراق المستوى
+                _state.Velocity.y = 0f; // تصفير السرعة العمودية لمنع استمرار الدفع لأسفل
+                _state.Omega = 0f; // إيقاف السرعة الزاوية للنواسات الصلبة عند الاصطدام المباشر
+            }
+
             UpdateBucketPosition(_state.BucketPosition);
             UpdateRope(pivotPos, _state.BucketPosition);
         }
-
         private void IntegrateElasticPhysics(float dt, Vector3 pivotPos, float length)
         {
             if (_config == null) return;

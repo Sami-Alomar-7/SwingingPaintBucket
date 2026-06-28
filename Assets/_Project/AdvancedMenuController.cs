@@ -44,9 +44,8 @@ public class AdvancedMenuController : MonoBehaviour
 
     void Start()
     {
-        if (mainSettingsMenuPanel != null) mainSettingsMenuPanel.SetActive(false);
         if (mainSettingsButton != null) mainSettingsButton.SetActive(true);
-
+        if (mainSettingsMenuPanel != null) mainSettingsMenuPanel.SetActive(false);
         CloseAllSubMenus();
     }
 
@@ -69,12 +68,6 @@ public class AdvancedMenuController : MonoBehaviour
             Time.timeScale = 1f;
             Debug.Log("انطلقت المحاكاة برمجياً!");
         }
-    }
-
-    public void TogglePauseSimulation()
-    {
-        isPaused = !isPaused;
-        Time.timeScale = isPaused ? 0f : 1f;
     }
 
     public void ResetToOriginalValues()

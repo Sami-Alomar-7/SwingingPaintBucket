@@ -119,12 +119,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
                     {
                         ParticleData targetParticle = _particles[index];
 
-                        if (targetParticle.position.y <= surfaceY + 0.05f && paintSurfaceSystem != null)
-                        {
-                            Vector2 uvCoords = WorldToSurfaceUV(targetParticle.position);
-
-                            paintSurfaceSystem.PaintAtUV(uvCoords, targetParticle.color, 1);
-                        }
 
                         _particles.RemoveAt(index);
                     }
