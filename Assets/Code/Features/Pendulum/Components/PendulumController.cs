@@ -6,9 +6,8 @@ using SwingingPaintBucket.Features.Rope.Interfaces;
 using SwingingPaintBucket.Features.ExternalForces.Interfaces;
 using SwingingPaintBucket.Features.ExternalForces.Services;
 using SwingingPaintBucket.Features.Paint.Components;
-using SwingingPaintBucket.Features.Paint.Interfaces;
-using SwingingPaintBucket.Features.Pendulum.Services;
 using SwingingPaintBucket.Features.Rope.Data;
+using SwingingPaintBucket.Features.Pendulum.Services;
 using SwingingPaintBucket.Features.Surface.Components;
 
 namespace SwingingPaintBucket.Features.Pendulum.Components
@@ -31,6 +30,9 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
         [SerializeField] private float _pivotY;
         [SerializeField] private UnityEngine.UI.Button _startButton;
         [SerializeField] private UnityEngine.UI.Button _resetButton;
+
+        [Header("Ground Physical Settings")]
+        [SerializeField] private float _groundLevel = 0.2f;
 
         public float PivotY { get => _pivotY; set => _pivotY = value; }
         public Transform PivotTransform { get => _pivotTransform; set => _pivotTransform = value; }
@@ -61,17 +63,17 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
         {
             if (_inputHandler == null) _inputHandler = new PendulumInputHandler();
             if (PhysicsEngine == null) PhysicsEngine = new PendulumPhysicsService();
-
             if (MassProvider == null) MassProvider = new MassSystem();
 
+            // إعداد القوى الخارجية المؤثرة في البيئة
             ForceProviders = new List<IForceProvider>
             {
-                new GravityForce(MassProvider), 
-                new DragForce()               
+                new GravityForce(MassProvider),
+                new DragForce(),
+                new GroundCollisionForce(_groundLevel, stiffness: 15000f, damping: 150f, friction: 0.5f)
             };
 
             if (_paintEmitter == null) _paintEmitter = FindAnyObjectByType<PaintEmitter>();
-
             if (_paintEmitter != null && _paintEmitter.paintSurfaceSystem == null)
             {
                 _paintEmitter.paintSurfaceSystem = FindAnyObjectByType<PaintSurfaceSystem>();
@@ -97,7 +99,21 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
 
             if (PhysicsEngine != null && _config != null)
             {
-                _angleAcceleration = PhysicsEngine.ComputeAngularAcceleration(_state, _config, totalMass, ForceProviders);
+                if (_config.CurrentRopeType == RopeType.Rigid)
+                {
+                    // الحبل الصلب (Rigid): يتم فصل قوة الأرض العمودية لتجنب تشويه العزم الزاوي
+                    var rigidForces = new List<IForceProvider>();
+                    foreach (var fp in ForceProviders)
+                    {
+                        if (!(fp is GroundCollisionForce)) rigidForces.Add(fp);
+                    }
+                    _angleAcceleration = PhysicsEngine.ComputeAngularAcceleration(_state, _config, totalMass, rigidForces);
+                }
+                else
+                {
+                    // الحبال المطاطية: تأخذ كل القوى المؤثرة بما فيها الاصطدام الشامل
+                    _angleAcceleration = PhysicsEngine.ComputeAngularAcceleration(_state, _config, totalMass, ForceProviders);
+                }
             }
 
             IntegrateState(dt, pivotPos, _config != null ? _config.RopeLength : 3f);
@@ -111,18 +127,31 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
                 _state = _inputHandler.ReadPendulumState();
             }
 
-            if (_config != null && _pivotTransform != null)
-            {
-                _config.PivotPosition = _pivotTransform.position;
-
-                // ربط طول الحبل الحقيقي المدخل بـ الـ RestLength الخاص بحسابات المطاطية والفيزياء
-                _config.RopeConfig.RestLength = _config.RopeLength;
-            }
-
             Vector3 pivotPos = _pivotTransform != null ? _pivotTransform.position : new Vector3(0f, _pivotY, 0f);
             float length = _config != null ? _config.RopeLength : 3f;
 
-            _state.BucketPosition = pivotPos + length * new Vector3(Mathf.Sin(_state.Theta), -Mathf.Cos(_state.Theta), 0f);
+            if (_config != null)
+            {
+                _config.PivotPosition = pivotPos;
+                _config.RopeConfig.RestLength = length;
+            }
+
+            // حساب الموضع الافتراضي بناءً على الزاوية الحقيقية المطلوبة من المستخدم أولاً
+            Vector3 proposedPosition = pivotPos + length * new Vector3(Mathf.Sin(_state.Theta), -Mathf.Cos(_state.Theta), 0f);
+
+            // التحقق مما إذا كان الموضع المختار بالزاوية الكبيرة يخترق الأرض فعلياً عند البداية
+            if (proposedPosition.y < _groundLevel)
+            {
+                proposedPosition.y = _groundLevel;
+
+                // إعادة تصحيح الزاوية الابتدائية لتتطابق هندسياً مع ملامسة الأرض ومنع الانفجار
+                float dx = proposedPosition.x - pivotPos.x;
+                float dy = pivotPos.y - _groundLevel;
+                _state.Theta = Mathf.Atan2(dx, dy);
+            }
+
+            // اعتماد الموضع النهائي الآمن والمستقر
+            _state.BucketPosition = proposedPosition;
 
             Vector3 tangentialDir = new Vector3(Mathf.Cos(_state.Theta), Mathf.Sin(_state.Theta), 0f);
             _state.Velocity = tangentialDir * (_state.Omega * length);
@@ -145,12 +174,9 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
                 if (bucketRenderer != null) bucketRenderer.material.color = Color.black;
             }
 
-            // تطبيق الـ Presets وتحديث شكل الحبل فوراً
             if (_config != null)
             {
                 RopeTypePresets.ApplyPreset(_config.RopeConfig, _config.CurrentRopeType);
-
-                // إرسال الإعدادات البصرية الجديدة للحبل ليتغير لونه وسماكته في المشهد
                 if (Rope is SwingingPaintBucket.Features.Rope.Components.RopeRenderer visualRope)
                 {
                     visualRope.ApplyVisualConfig(_config.RopeConfig);
@@ -158,9 +184,9 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             }
 
             _isRunning = true;
-
             if (_paintEmitter != null) _paintEmitter.StartSimulation();
         }
+
         public void ResetSimulation()
         {
             _isRunning = false;
@@ -189,12 +215,6 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
                 massSystem.AdjustPaintMass(_config.InitialPaintMass - currentPaint);
             }
 
-            if (_bucketTransform != null)
-            {
-                Renderer bucketRenderer = _bucketTransform.GetComponent<Renderer>();
-                if (bucketRenderer != null) bucketRenderer.material.color = Color.black;
-            }
-
             if (_paintEmitter != null)
             {
                 _paintEmitter.StopSimulation();
@@ -202,36 +222,46 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             }
         }
 
-        // واجبي دالة دمج الحركة وحصر الارتفاع (IntegrateState) لتصبح هكذا لمنع اختراق الأرض:
         private void IntegrateState(float dt, Vector3 pivotPos, float length)
         {
             if (_config != null && _config.CurrentRopeType == RopeType.Rigid)
             {
+                // دمج الحركة الزاوية الكلاسيكية للنواس الجاسئ
                 _state.Omega += _angleAcceleration * dt;
                 _state.Theta += _state.Omega * dt;
                 _state.Theta = Mathf.Clamp(_state.Theta, -Mathf.PI, Mathf.PI);
 
                 _state.BucketPosition = pivotPos + length * new Vector3(Mathf.Sin(_state.Theta), -Mathf.Cos(_state.Theta), 0f);
+
+                // معالجة الاصطدام الصارم لمنع اختراق الريجيد للأرض أثناء الأرجحة
+                if (_state.BucketPosition.y < _groundLevel)
+                {
+                    float verticalDistance = pivotPos.y - _groundLevel;
+                    float maxAllowedTheta = Mathf.Acos(Mathf.Clamp(verticalDistance / length, 0f, 1f));
+
+                    // تثبيت الزاوية عند حد التماس السطحي ومنع التجاوز
+                    _state.Theta = Mathf.Sign(_state.Theta) * maxAllowedTheta;
+
+                    // ارتداد فيزيائي يعكس اتجاه السرعة الزاوية مع امتصاص جزء من الطاقة
+                    _state.Omega = -_state.Omega * 0.3f;
+
+                    // إعادة حساب الموضع بدقة ليكون ملاصقاً تماماً للأرض دون تداخل
+                    _state.BucketPosition = pivotPos + length * new Vector3(Mathf.Sin(_state.Theta), -Mathf.Cos(_state.Theta), 0f);
+                }
+
+                // تحديث السرعة الخطية المتوافقة مع أوميغا المعدلة
+                _state.Velocity = new Vector3(Mathf.Cos(_state.Theta), Mathf.Sin(_state.Theta), 0f) * (_state.Omega * length);
             }
             else
             {
+                // دمج الفيزياء المطاطية ثلاثية الأبعاد الحرة
                 IntegrateElasticPhysics(dt, pivotPos, length);
-            }
-
-            // 🛑 نظام حماية الأرض الافتراضي (Ground Collision Guard)
-            // نفترض أن الأرض تقع عند الموضع Y = 0 أو مستوى سطح اللوحة النشطة لديكِ
-            float groundLevel = 0.2f; // يمكنكِ تعديل هذا الرقم بناءً على ارتفاع سطح اللوحة في مشروعكِ
-
-            if (_state.BucketPosition.y < groundLevel)
-            {
-                _state.BucketPosition.y = groundLevel; // منع اختراق المستوى
-                _state.Velocity.y = 0f; // تصفير السرعة العمودية لمنع استمرار الدفع لأسفل
-                _state.Omega = 0f; // إيقاف السرعة الزاوية للنواسات الصلبة عند الاصطدام المباشر
             }
 
             UpdateBucketPosition(_state.BucketPosition);
             UpdateRope(pivotPos, _state.BucketPosition);
         }
+
         private void IntegrateElasticPhysics(float dt, Vector3 pivotPos, float length)
         {
             if (_config == null) return;
@@ -265,13 +295,29 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             float vRadial = Vector3.Dot(_state.Velocity, radialDir);
             Vector3 ropeDampingForce = -_config.RopeConfig.RopeDamping * vRadial * radialDir;
 
-            Vector3 gravityForce = totalMass * _config.Gravity * Vector3.down;
-            Vector3 airDragForce = -_config.DampingCoefficient * _state.Velocity;
+            Vector3 environmentalForces = Vector3.zero;
+            if (ForceProviders != null)
+            {
+                for (int i = 0; i < ForceProviders.Count; i++)
+                {
+                    if (ForceProviders[i] != null)
+                    {
+                        environmentalForces += ForceProviders[i].GetForce(_state, _config);
+                    }
+                }
+            }
 
-            Vector3 totalForce = gravityForce + springForce + ropeDampingForce + airDragForce;
+            Vector3 totalForce = springForce + ropeDampingForce + environmentalForces;
 
             _state.Velocity += (totalForce / totalMass) * dt;
             _state.BucketPosition += _state.Velocity * dt;
+
+            // حماية إضافية نهائية للأنواع المطاطية لمنع اختراق الحسابات الفراغية
+            if (_state.BucketPosition.y < _groundLevel)
+            {
+                _state.BucketPosition.y = _groundLevel;
+                if (_state.Velocity.y < 0f) _state.Velocity.y = -_state.Velocity.y * 0.1f;
+            }
 
             Vector3 planarProj = new Vector3(_state.BucketPosition.x - pivotPos.x, 0f, _state.BucketPosition.z - pivotPos.z);
             _state.Theta = Mathf.Atan2(planarProj.magnitude * Mathf.Sign(planarProj.x), pivotPos.y - _state.BucketPosition.y);
@@ -283,16 +329,11 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             if (_bucketTransform != null)
             {
                 _bucketTransform.position = worldPosition;
-
                 if (_pivotTransform != null)
                 {
                     Vector3 pivotPos = _pivotTransform.position;
                     Vector3 toPivot = (pivotPos - worldPosition).normalized;
-
-                    if (toPivot != Vector3.zero)
-                    {
-                        _bucketTransform.up = toPivot; 
-                    }
+                    if (toPivot != Vector3.zero) _bucketTransform.up = toPivot;
                 }
             }
         }

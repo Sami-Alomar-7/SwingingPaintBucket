@@ -217,7 +217,7 @@ Transform:
   m_GameObject: {fileID: 132127587}
   serializedVersion: 2
   m_LocalRotation: {x: 0.2588191, y: 0, z: 0, w: 0.9659258}
-  m_LocalPosition: {x: 0, y: 6, z: -13}
+  m_LocalPosition: {x: 0, y: 6.371, z: -13}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -336,6 +336,14 @@ MonoBehaviour:
   textureSize: 1024
   baseColor: {r: 0.995315, g: 1, b: 0.92156863, a: 1}
   paintSizeMultiplier: 0.2
+  woodMaterial: {fileID: 0}
+  metalMaterial: {fileID: 0}
+  paperMaterial: {fileID: 0}
+  glassMaterial: {fileID: 0}
+  woodBaseTexture: {fileID: 0}
+  metalBaseTexture: {fileID: 0}
+  paperBaseTexture: {fileID: 0}
+  glassBaseTexture: {fileID: 0}
 --- !u!4 &607616117
 Transform:
   m_ObjectHideFlags: 0
@@ -345,7 +353,7 @@ Transform:
   m_GameObject: {fileID: 607616115}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.01, y: -1.79, z: -1.46}
+  m_LocalPosition: {x: 0.01, y: -0.4, z: -1.46}
   m_LocalScale: {x: 10, y: 1, z: 5}
   m_ConstrainProportionsScale: 0
   m_Children: []
