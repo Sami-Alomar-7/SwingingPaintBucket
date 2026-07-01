@@ -92,7 +92,8 @@ public class AdvancedMenuController : MonoBehaviour
             paintSurfaceSystem.ClearSurfaceCustom();
             Debug.Log("تم تنظيف السطح وتبييض الورقة برمجياً دون إعادة تحميل المشهد!");
         }
-
+        // ابحثي عن مرجع الـ BucketLiquidVolume واستدعي الدالة
+        FindObjectOfType<BucketLiquidVolume>().ResetVolume();
         // ملاحظة: حذفنا سطر SceneManager.LoadScene تماماً 
         // لتبقى القوائم (UI Panels) مفتوحة وتحتفظ بكل القيم الفيزيائية التي قمتِ بتعديلها.
     }

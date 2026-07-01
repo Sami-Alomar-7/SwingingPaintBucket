@@ -1,24 +1,25 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
 using SwingingPaintBucket.Features.Pendulum.Components;
-using SwingingPaintBucket.Features.Pendulum.Data;
 
 namespace SwingingPaintBucket.Features.Paint.Components
 {
     public class BucketLiquidVolume : MonoBehaviour
     {
-        [Header("Glass Box Visual")]
-        [SerializeField] private Transform _glassOuterBox;
-        [SerializeField] private Material _glassMaterial;
+        [Header("Cylinder Visual")]
+        [SerializeField] private Transform _glassOuterBox; // يمثل جسم الأسطوانة المحيط بالسائل
         [SerializeField] private Material _liquidMaterial;
 
+        [Header("Cylinder Dimensions")]
+        [SerializeField] private float _cylinderRadius = 0.5f;  // نصف قطر الأسطوانة (البديل لـ Extents.x و Extents.z)
+        [SerializeField] private float _cylinderHeight = 1.0f;  // الارتفاع الكلي للأسطوانة (البديل لـ Extents.y * 2)
+        [SerializeField] private float _particleSize = 0.025f;
+
         [Header("Liquid Physics")]
-        [SerializeField] private int _particleCount = 55;
-        [SerializeField] private float _particleSize = 0.035f;
-        [SerializeField] private float _cohesionForce = 12f;
-        [SerializeField] private float _viscosity = 15f;
-        [SerializeField] private float _damping = 0.55f;
-        [SerializeField] private float _inertiaResponse = 1.6f;
+        [SerializeField] private int _maxParticleCount = 600;
+        [SerializeField] private float _repulsionForce = 25f;
+        [SerializeField] private float _inertiaResponse = 5.0f;
+        [SerializeField] private float _sloshSensitivity = 0.5f;
 
         [Header("References")]
         [SerializeField] private PendulumController _pendulum;
@@ -27,18 +28,21 @@ namespace SwingingPaintBucket.Features.Paint.Components
         private List<LiquidParticle> _particles = new List<LiquidParticle>();
         private List<Transform> _visuals = new List<Transform>();
 
-        private Vector3 _boxHalfExtents;
         private float _maxLiquidHeight;
-
         private float _currentLiquidLevel = 1f;
         private Vector3 _previousBucketPos;
         private Vector3 _bucketVelocity;
         private Vector3 _bucketAcceleration;
+        private int _activeParticlesRemaining;
+        private int _currentConfiguredCount;
+
+        public bool IsEmpty => _activeParticlesRemaining <= 0;
 
         [System.Serializable]
         private class LiquidParticle
         {
             public Vector3 localPosition;
+            public Vector3 initialLocalPosition;
             public Vector3 velocity;
             public bool isActive = true;
         }
@@ -49,49 +53,73 @@ namespace SwingingPaintBucket.Features.Paint.Components
             if (_bucketTransform == null && _pendulum != null)
                 _bucketTransform = _pendulum.BucketTransform;
 
-            SetupGlassBox();
-            InitializeParticles();
+            SetupCylinderLimits();
+            CalculateInitialCountFromMass();
+            InitializeParticles(_currentConfiguredCount);
 
             if (_bucketTransform != null)
                 _previousBucketPos = _bucketTransform.position;
         }
 
-        private void SetupGlassBox()
+        private void SetupCylinderLimits()
         {
-            if (_glassOuterBox == null) return;
+            // أقصى ارتفاع مسموح به للسائل بالنسبة لمركز الأسطوانة المحلي (عادة نصف الارتفاع)
+            _maxLiquidHeight = (_cylinderHeight / 2f) * 1.2f;
 
-            _boxHalfExtents = _glassOuterBox.localScale * 0.5f;
-            _maxLiquidHeight = _boxHalfExtents.y * 1.8f;
-
-            if (_glassMaterial == null)
+            if (_liquidMaterial == null)
             {
-                _glassMaterial = new Material(Shader.Find("Standard"));
-                _glassMaterial.SetFloat("_Mode", 3);
-                _glassMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-                _glassMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-                _glassMaterial.SetInt("_ZWrite", 0);
-                _glassMaterial.EnableKeyword("_ALPHABLEND_ON");
-                _glassMaterial.color = new Color(0.85f, 0.92f, 1f, 0.12f);
-                _glassMaterial.SetFloat("_Glossiness", 0.95f);
+                _liquidMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                if (_liquidMaterial == null) _liquidMaterial = new Material(Shader.Find("Standard"));
+                _liquidMaterial.color = new Color(0.9f, 0f, 0.9f, 1f);
             }
-
-            Renderer rend = _glassOuterBox.GetComponent<Renderer>();
-            if (rend != null) rend.material = _glassMaterial;
         }
 
-        private void InitializeParticles()
+        private void CalculateInitialCountFromMass()
+        {
+            if (_pendulum != null && _pendulum.MassProvider != null)
+            {
+                float totalMass = _pendulum.MassProvider.GetTotalMass();
+                float baseMass = 1f;
+                float maxPaint = 0.5f;
+
+                float initialRatio = Mathf.Clamp01((totalMass - baseMass) / maxPaint);
+                if (Time.timeSinceLevelLoad < 0.5f && initialRatio <= 0.01f) initialRatio = 1f;
+
+                _currentConfiguredCount = Mathf.CeilToInt(initialRatio * _maxParticleCount);
+            }
+            else
+            {
+                _currentConfiguredCount = _maxParticleCount;
+            }
+        }
+
+        public void InitializeParticles(int count)
         {
             if (_glassOuterBox == null) return;
 
-            for (int i = 0; i < _particleCount; i++)
+            foreach (var v in _visuals) { if (v != null) Destroy(v.gameObject); }
+            _visuals.Clear();
+            _particles.Clear();
+
+            _activeParticlesRemaining = count;
+
+            float halfHeight = _cylinderHeight / 2f;
+
+            for (int i = 0; i < count; i++)
             {
                 LiquidParticle p = new LiquidParticle();
-                float yBias = Random.value;
-                p.localPosition = new Vector3(
-                    Random.Range(-_boxHalfExtents.x * 0.8f, _boxHalfExtents.x * 0.8f),
-                    -_boxHalfExtents.y + yBias * _maxLiquidHeight * 0.85f,
-                    Random.Range(-_boxHalfExtents.z * 0.8f, _boxHalfExtents.z * 0.8f)
-                );
+
+                // التوليد العشوائي الموزع بانتظام داخل الأسطوانة الدائرية (Cylinder Distribution)
+                float angle = Random.Range(0f, Mathf.PI * 2f);
+                // استخدام الجذر التربيعي لضمان توزيع متناسق للجزيئات وعدم تكتلها في المركز
+                float r = _cylinderRadius * 0.85f * Mathf.Sqrt(Random.Range(0f, 1f));
+
+                float x = r * Mathf.Cos(angle);
+                float z = r * Mathf.Sin(angle);
+                float y = Random.Range(-halfHeight * 0.85f, halfHeight * 0.2f);
+
+                p.localPosition = new Vector3(x, y, z);
+                p.initialLocalPosition = p.localPosition;
                 p.velocity = Vector3.zero;
                 _particles.Add(p);
 
@@ -105,17 +133,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 if (col != null) Destroy(col);
 
                 Renderer rend = sphere.GetComponent<Renderer>();
-                if (rend != null)
-                {
-                    if (_liquidMaterial == null)
-                    {
-                        _liquidMaterial = new Material(Shader.Find("Standard"));
-                        _liquidMaterial.color = new Color(0.85f, 0.15f, 0.2f, 0.85f); // لون طلاء أحمر مائي واضح للجنة التحكيم
-                        _liquidMaterial.SetFloat("_Glossiness", 0.9f);
-                    }
-                    rend.material = _liquidMaterial;
-                    rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                }
+                if (rend != null) rend.material = _liquidMaterial;
 
                 _visuals.Add(sphere.transform);
             }
@@ -146,144 +164,138 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 float totalMass = _pendulum.MassProvider.GetTotalMass();
                 float baseMass = 1f;
                 float maxPaint = 0.5f;
+
                 _currentLiquidLevel = Mathf.Clamp01((totalMass - baseMass) / maxPaint);
+
+                int targetActiveCount = Mathf.CeilToInt(_currentLiquidLevel * _currentConfiguredCount);
+                while (_activeParticlesRemaining > targetActiveCount && _activeParticlesRemaining > 0)
+                {
+                    RemoveParticle();
+                }
             }
         }
 
         private void UpdateParticlePhysics()
         {
-            float dt = Mathf.Min(Time.deltaTime, 0.015f);
+            float dt = Mathf.Min(Time.deltaTime, 0.02f);
             Vector3 localGravity = new Vector3(0f, -9.81f, 0f);
 
             Vector3 localInertia = _glassOuterBox.InverseTransformDirection(_bucketAcceleration) * _inertiaResponse;
-            Vector3 effectiveGravity = localGravity + localInertia;
+            Vector3 effectiveGravity = localGravity - localInertia;
 
-            if (_pendulum != null)
-            {
-                PendulumState? nullableState = GetPendulumState();
-                if (nullableState.HasValue)
-                {
-                    PendulumState state = nullableState.Value;
-                    float theta = state.Theta;
-                    float omega = state.Omega;
-                    float length = GetPendulumLength();
-                    float centripetal = length * omega * omega;
-                    float g = 9.81f;
-                    float direction = Mathf.Cos(theta);
-                    float gEff = Mathf.Max(0.1f, g * Mathf.Abs(direction) + direction * centripetal);
-                    effectiveGravity.y = -gEff;
-                }
-            }
+            float halfHeight = _cylinderHeight / 2f;
+            float bounce = 0.4f;
+            float safeRadius = _cylinderRadius * 0.92f; // حد الأمان لمنع الاختراق الجانبي للأسطوانة
 
             for (int i = 0; i < _particles.Count; i++)
             {
                 var p = _particles[i];
                 if (!p.isActive) continue;
 
-                Vector3 cohesion = Vector3.zero;
-                Vector3 viscosity = Vector3.zero;
-                int neighborCount = 0;
+                p.velocity += effectiveGravity * dt;
 
+                // محرك التنافر البيني
                 for (int j = 0; j < _particles.Count; j++)
                 {
                     if (i == j || !_particles[j].isActive) continue;
-
-                    Vector3 diff = _particles[j].localPosition - p.localPosition;
+                    Vector3 diff = p.localPosition - _particles[j].localPosition;
                     float dist = diff.magnitude;
-                    float radius = _particleSize * 3.5f;
+                    float targetDist = _particleSize * 2.2f;
 
-                    if (dist < radius && dist > 0.001f)
+                    if (dist < targetDist && dist > 0.001f)
                     {
-                        float strength = (1f - dist / radius) * _cohesionForce;
-                        cohesion += diff.normalized * strength;
-                        viscosity += (_particles[j].velocity - p.velocity) * _viscosity;
-                        neighborCount++;
+                        float forceFactor = 1f - (dist / targetDist);
+                        p.velocity += diff.normalized * forceFactor * _repulsionForce * dt;
                     }
                 }
 
-                if (neighborCount > 0)
-                {
-                    cohesion /= neighborCount;
-                    viscosity /= neighborCount;
-                }
-
-                Vector3 totalForce = effectiveGravity + cohesion + viscosity;
-                p.velocity += totalForce * dt;
-                p.velocity *= _damping;
                 p.localPosition += p.velocity * dt;
 
-                float bounce = 0.05f;
+                // === معالجة الجدران الدائرية للأسطوانة (Radial Collision) ===
+                Vector3 horizontalPos = new Vector3(p.localPosition.x, 0f, p.localPosition.z);
+                float currentRadius = horizontalPos.magnitude;
 
-                // X Bounds collision
-                if (p.localPosition.x > _boxHalfExtents.x * 0.88f) { p.localPosition.x = _boxHalfExtents.x * 0.88f; p.velocity.x = -p.velocity.x * bounce; }
-                else if (p.localPosition.x < -_boxHalfExtents.x * 0.88f) { p.localPosition.x = -_boxHalfExtents.x * 0.88f; p.velocity.x = -p.velocity.x * bounce; }
+                if (currentRadius > safeRadius)
+                {
+                    // إرجاع الجزيء إلى حدود الجدار الدائري الداخلي
+                    Vector3 radialNormal = horizontalPos.normalized;
+                    p.localPosition.x = radialNormal.x * safeRadius;
+                    p.localPosition.z = radialNormal.z * safeRadius;
 
-                // Y Bounds collision (تأثر تراقص السطح العلوي)
-                float liquidTop = -_boxHalfExtents.y + _currentLiquidLevel * _maxLiquidHeight;
-                if (p.localPosition.y > liquidTop) { p.localPosition.y = liquidTop; p.velocity.y = -p.velocity.y * bounce; }
-                else if (p.localPosition.y < -_boxHalfExtents.y * 0.92f) { p.localPosition.y = -_boxHalfExtents.y * 0.92f; p.velocity.y = -p.velocity.y * bounce; }
+                    // عكس مركبة السرعة الأفقية المتجهة نحو الخارج ليرتد للداخل
+                    Vector3 horizontalVelocity = new Vector3(p.velocity.x, 0f, p.velocity.z);
+                    float normalVelocityDot = Vector3.Dot(horizontalVelocity, radialNormal);
 
-                // Z Bounds collision
-                if (p.localPosition.z > _boxHalfExtents.z * 0.88f) { p.localPosition.z = _boxHalfExtents.z * 0.88f; p.velocity.z = -p.velocity.z * bounce; }
-                else if (p.localPosition.z < -_boxHalfExtents.z * 0.88f) { p.localPosition.z = -_boxHalfExtents.z * 0.88f; p.velocity.z = -p.velocity.z * bounce; }
+                    if (normalVelocityDot > 0f) // يتحرك باتجاه الخارج
+                    {
+                        Vector3 reflectedHorizontal = horizontalVelocity - (1f + bounce) * normalVelocityDot * radialNormal;
+                        p.velocity.x = reflectedHorizontal.x;
+                        p.velocity.z = reflectedHorizontal.z;
+                    }
+                }
+
+                // === معالجة السقف والقاع (Y Axis Constraints) ===
+                float maxAllowedHeight = halfHeight * 0.95f;
+
+                if (p.localPosition.y > maxAllowedHeight)
+                {
+                    p.localPosition.y = maxAllowedHeight;
+                    p.velocity.y = -p.velocity.y * bounce;
+                }
+                else if (p.localPosition.y < -halfHeight * 0.92f)
+                {
+                    p.localPosition.y = -halfHeight * 0.92f;
+                    p.velocity.y = -p.velocity.y * bounce;
+                }
             }
         }
 
         private void UpdateVisuals()
         {
-            for (int i = 0; i < _particles.Count && i < _visuals.Count; i++)
+            for (int i = 0; i < _particles.Count; i++)
             {
-                var p = _particles[i];
-                var visual = _visuals[i];
-                if (visual == null) continue;
-
-                visual.gameObject.SetActive(p.isActive);
-                if (p.isActive)
+                if (_visuals[i] != null)
                 {
-                    visual.localPosition = p.localPosition;
-                    visual.localScale = Vector3.one * _particleSize;
+                    _visuals[i].gameObject.SetActive(_particles[i].isActive);
+                    if (_particles[i].isActive)
+                    {
+                        _visuals[i].localPosition = _particles[i].localPosition;
+                    }
                 }
             }
         }
 
         public void RemoveParticle()
         {
-            int topIndex = -1;
             float maxY = float.MinValue;
+            int targetIndex = -1;
 
             for (int i = 0; i < _particles.Count; i++)
             {
                 if (_particles[i].isActive && _particles[i].localPosition.y > maxY)
                 {
                     maxY = _particles[i].localPosition.y;
-                    topIndex = i;
+                    targetIndex = i;
                 }
             }
 
-            if (topIndex >= 0)
+            if (targetIndex >= 0)
             {
-                _particles[topIndex].isActive = false;
+                _particles[targetIndex].isActive = false;
+                _activeParticlesRemaining--;
             }
         }
 
-        private PendulumState? GetPendulumState()
+        public void ResetVolume()
         {
-            if (_pendulum == null) return null;
-            var stateField = _pendulum.GetType().GetField("_state", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (stateField != null) return (PendulumState)stateField.GetValue(_pendulum);
-            return null;
-        }
+            _bucketVelocity = Vector3.zero;
+            _bucketAcceleration = Vector3.zero;
 
-        private float GetPendulumLength()
-        {
-            if (_pendulum == null) return 3f;
-            var configField = _pendulum.GetType().GetField("_config", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (configField != null)
-            {
-                var config = configField.GetValue(_pendulum) as PendulumConfig;
-                if (config != null) return config.RopeLength;
-            }
-            return 3f;
+            if (_bucketTransform != null)
+                _previousBucketPos = _bucketTransform.position;
+
+            CalculateInitialCountFromMass();
+            InitializeParticles(_currentConfiguredCount);
         }
     }
 }

@@ -71,9 +71,18 @@ namespace SwingingPaintBucket.Features.Paint.Components
             }
         }
         // داخل ملف PaintEmitter.cs - دالة Update
+        // داخل ملف PaintEmitter.cs - دالة Update المعدلة
         private void Update()
         {
             if (!_isRunning) return;
+
+            // الشرط المنقذ: إذا فرغ المكعب تماماً، اقطعي الرش فوراً ولا تطلقي أي جزيئات خارجية!
+            if (_bucketLiquidVolume != null && _bucketLiquidVolume.IsEmpty)
+            {
+                _emissionCutoff = true;
+                ClearParticles(); // تنظيف الجزيئات المعلقة في الهواء ليتوقف الرسم فوراً
+                return;
+            }
 
             Vector3 bucketVelocity = Vector3.zero;
             if (Time.deltaTime > 0f && bucket != null)
@@ -89,7 +98,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 float currentDiameter = _pendulumController != null ? _pendulumController.CurrentApertureDiameter : emissionConfig.holeDiameter;
                 emissionConfig.holeDiameter = currentDiameter;
 
-                // 1. حساب معدل الانبعاث بناءً على قانون توريشيللي (سنعدله في الخدمة أدناه)
                 float spawnRate = emissionService.CalculateEmissionRate(bucketVelocity, emissionConfig);
                 float interval = spawnRate > 0f ? 1f / spawnRate : float.MaxValue;
 
@@ -99,18 +107,13 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
                     if (_particles.Count < 600)
                     {
-                        // 2. الحل الجذري: تحديد نقطة الانطلاق لتكون مكان الـ spawnPoint الفعلي لضمان الخروج من الفتحة تماماً
-                        // إذا لم يتم تعيين spawnPoint، نستخدم أسفل الدلو كخيار احتياطي آمن
                         Vector3 origin = spawnPoint != null ? spawnPoint.position : (bucket != null ? bucket.position - bucket.up * 0.3f : transform.position);
 
-                        // 3. حصر التناثر العشوائي داخل حدود نصف قطر الفتحة الحالية فقط لمنع التناثر خارج الدائرة السوداء
                         float r = currentDiameter * 0.5f;
                         Vector3 randomOffset = new Vector3(Random.Range(-r, r), 0f, Random.Range(-r, r));
 
-                        // 4. تحويل الإزاحة العشوائية من الفراغ المحلي للدلو إلى الفراغ العالمي لحماية الحزمة أثناء التأرجح
                         Vector3 finalSpawnPos = origin + (spawnPoint != null ? spawnPoint.TransformDirection(randomOffset) : (bucket != null ? bucket.TransformDirection(randomOffset) : randomOffset));
 
-                        // جعل حجم الجزيء متناسب بصرياً مع القطر الحالي
                         emissionConfig.particleSize = Mathf.Clamp(currentDiameter * 1.5f, 0.02f, 0.25f);
 
                         emissionService.EmitParticle(emissionConfig, finalSpawnPos, bucketVelocity, _particles);

@@ -156,13 +156,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 87333971}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: -0.60876137, z: 0, w: 0.7933534}
-  m_LocalPosition: {x: -0.3, y: 1, z: -3}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalRotation: {x: -0, y: -0.6088337, z: -0, w: 0.79329795}
+  m_LocalPosition: {x: 0.90000725, y: 0, z: 1.5600078}
+  m_LocalScale: {x: 1.5, y: 1.5, z: 1.5}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 174290277}
-  m_LocalEulerAnglesHint: {x: 0, y: -75, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: -75.01, z: 0}
 --- !u!23 &87333973
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -219,7 +219,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 87333971}
-  m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
 --- !u!1 &132127587
 GameObject:
   m_ObjectHideFlags: 0
@@ -658,10 +658,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BucketLiquidVolume
   _glassOuterBox: {fileID: 87333972}
-  _liquidMaterial: {fileID: 2100000, guid: 29d880433c32ce84aa2666654549d00b, type: 2}
-  _maxParticleCount: 900
+  _liquidMaterial: {fileID: 0}
+  _particleCount: 48
   _particleSize: 0.04
-  _repulsionForce: 25
+  _cohesionForce: 8
+  _viscosity: 10
+  _damping: 0.65
   _inertiaResponse: 1.4
   _sloshSensitivity: 0.35
   _pendulum: {fileID: 0}
