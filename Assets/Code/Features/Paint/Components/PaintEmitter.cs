@@ -4,6 +4,7 @@ using SwingingPaintBucket.Features.Paint.Data;
 using SwingingPaintBucket.Features.Paint.Interfaces;
 using SwingingPaintBucket.Features.Surface.Components;
 using SwingingPaintBucket.Features.Paint.Services;
+using SwingingPaintBucket.Features.Pendulum.Components; // إضافة النطاق الخاص بالمتحكم
 
 namespace SwingingPaintBucket.Features.Paint.Components
 {
@@ -15,6 +16,8 @@ namespace SwingingPaintBucket.Features.Paint.Components
         public Transform bucket;
         public Transform surfaceSurface;
         public PaintSurfaceSystem paintSurfaceSystem;
+        [SerializeField] private BucketLiquidVolume _bucketLiquidVolume;
+        [SerializeField] private PendulumController _pendulumController; // مرجع للمتحكم الأساسي لقراءة القطر
 
         public object surfaceService
         {
@@ -43,9 +46,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
         public PaintEmissionConfig emissionConfig = new PaintEmissionConfig();
 
         [Header("UV Mapping Adjustments")]
-        [Tooltip("فعلي هذا الخيار إذا كانت البقع معكوسة يميناً ويساراً")]
         public bool invertX = false;
-        [Tooltip("فعلي هذا الخيار إذا كانت البقع معكوسة للأمام والخلف")]
         public bool invertZ = false;
 
         private readonly List<ParticleData> _particles = new List<ParticleData>();
@@ -60,6 +61,8 @@ namespace SwingingPaintBucket.Features.Paint.Components
             if (particleRenderer == null) particleRenderer = GetComponent<ParticleRenderer>();
             if (emissionService == null) emissionService = new DynamicPaintEmissionService();
             if (particlePhysicsService == null) particlePhysicsService = new ParticlePhysicsService();
+            if (_bucketLiquidVolume == null) _bucketLiquidVolume = FindAnyObjectByType<BucketLiquidVolume>();
+            if (_pendulumController == null) _pendulumController = FindAnyObjectByType<PendulumController>();
 
             if (surfaceSurface != null)
             {
@@ -67,7 +70,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 if (paintSurfaceSystem == null) paintSurfaceSystem = surfaceSurface.GetComponent<PaintSurfaceSystem>();
             }
         }
-
+        // داخل ملف PaintEmitter.cs - دالة Update
         private void Update()
         {
             if (!_isRunning) return;
@@ -82,6 +85,11 @@ namespace SwingingPaintBucket.Features.Paint.Components
             if (!_emissionCutoff && emissionService != null)
             {
                 _emissionTimer += Time.deltaTime;
+
+                float currentDiameter = _pendulumController != null ? _pendulumController.CurrentApertureDiameter : emissionConfig.holeDiameter;
+                emissionConfig.holeDiameter = currentDiameter;
+
+                // 1. حساب معدل الانبعاث بناءً على قانون توريشيللي (سنعدله في الخدمة أدناه)
                 float spawnRate = emissionService.CalculateEmissionRate(bucketVelocity, emissionConfig);
                 float interval = spawnRate > 0f ? 1f / spawnRate : float.MaxValue;
 
@@ -89,17 +97,35 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 {
                     _emissionTimer -= interval;
 
-                    if (spawnPoint != null && _particles.Count < 400)
+                    if (_particles.Count < 600)
                     {
-                        emissionService.EmitParticle(emissionConfig, spawnPoint.position, bucketVelocity, _particles);
+                        // 2. الحل الجذري: تحديد نقطة الانطلاق لتكون مكان الـ spawnPoint الفعلي لضمان الخروج من الفتحة تماماً
+                        // إذا لم يتم تعيين spawnPoint، نستخدم أسفل الدلو كخيار احتياطي آمن
+                        Vector3 origin = spawnPoint != null ? spawnPoint.position : (bucket != null ? bucket.position - bucket.up * 0.3f : transform.position);
+
+                        // 3. حصر التناثر العشوائي داخل حدود نصف قطر الفتحة الحالية فقط لمنع التناثر خارج الدائرة السوداء
+                        float r = currentDiameter * 0.5f;
+                        Vector3 randomOffset = new Vector3(Random.Range(-r, r), 0f, Random.Range(-r, r));
+
+                        // 4. تحويل الإزاحة العشوائية من الفراغ المحلي للدلو إلى الفراغ العالمي لحماية الحزمة أثناء التأرجح
+                        Vector3 finalSpawnPos = origin + (spawnPoint != null ? spawnPoint.TransformDirection(randomOffset) : (bucket != null ? bucket.TransformDirection(randomOffset) : randomOffset));
+
+                        // جعل حجم الجزيء متناسب بصرياً مع القطر الحالي
+                        emissionConfig.particleSize = Mathf.Clamp(currentDiameter * 1.5f, 0.02f, 0.25f);
+
+                        emissionService.EmitParticle(emissionConfig, finalSpawnPos, bucketVelocity, _particles);
                         massLossNotifier?.NotifyParticleEmitted(emissionConfig.particleMass);
+
+                        if (_bucketLiquidVolume != null)
+                        {
+                            _bucketLiquidVolume.RemoveParticle();
+                        }
                     }
                 }
             }
 
             RenderParticles();
         }
-
         private void FixedUpdate()
         {
             if (!_isRunning) return;
@@ -107,26 +133,31 @@ namespace SwingingPaintBucket.Features.Paint.Components
             if (particlePhysicsService != null)
             {
                 float surfaceY = surfaceSurface != null ? surfaceSurface.position.y : 0f;
-
                 List<int> toRemove = particlePhysicsService.UpdateParticles(_particles, Time.fixedDeltaTime, surfaceY, emissionConfig);
 
-                toRemove.Sort((a, b) => b.CompareTo(a));
+                for (int i = 0; i < _particles.Count; i++)
+                {
+                    ParticleData p = _particles[i];
+                    if (p.position.y <= surfaceY + 0.03f && paintSurfaceSystem != null)
+                    {
+                        Vector2 uv = WorldToSurfaceUV(p.position);
+                        int baseBrush = Mathf.Max(1, (int)(emissionConfig.particleSize * 150f));
+                        paintSurfaceSystem.PaintAtUV(uv, emissionConfig.particleColor, baseBrush);
+                    }
+                }
 
+                toRemove.Sort((a, b) => b.CompareTo(a));
                 for (int i = 0; i < toRemove.Count; i++)
                 {
                     int index = toRemove[i];
                     if (index >= 0 && index < _particles.Count)
                     {
-                        ParticleData targetParticle = _particles[index];
-
-
                         _particles.RemoveAt(index);
                     }
                 }
             }
         }
 
- 
         private Vector2 WorldToSurfaceUV(Vector3 worldPosition)
         {
             if (_surfaceRenderer == null) return Vector2.zero;

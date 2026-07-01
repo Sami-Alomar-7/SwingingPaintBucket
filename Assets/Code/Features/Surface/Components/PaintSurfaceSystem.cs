@@ -198,6 +198,52 @@ namespace SwingingPaintBucket.Features.Surface.Components
             }
         }
 
+        // دالة لتفريغ السطح تماماً وإعادته للونه الافتراضي (الأبيض)
+        public void ClearSurfaceCustom()
+        {
+            // 1. إعادة تهيئة مصفوفة الخلايا الداخلية إن وجدت لمنع تداخل الألوان القديمة في الحسابات الفيزيائية
+            if (_surfaceGrid != null)
+            {
+                int width = _surfaceGrid.GetLength(0);
+                int height = _surfaceGrid.GetLength(1);
+                for (int x = 0; x < width; x++)
+                {
+                    for (int y = 0; y < height; y++)
+                    {
+                        _surfaceGrid[x, y].PaintAccumulation = 0f;
+                        _surfaceGrid[x, y].CurrentColor = baseColor; // اللون الافتراضي (غالباً أبيض)
+                    }
+                }
+            }
+
+            // 2. الوصول للتيكستشر الفعلي وتلوينه بالكامل باللون الافتراضي
+            Renderer rend = GetComponent<Renderer>();
+            if (rend != null && rend.material != null)
+            {
+                // نصل للتيكستشر الفعلي النشط (سواء كان _paintingTexture أو المعين للمادة)
+                Texture2D tex = rend.material.mainTexture as Texture2D;
+                if (tex != null)
+                {
+                    Color[] blankPixels = new Color[tex.width * tex.height];
+                    for (int i = 0; i < blankPixels.Length; i++) blankPixels[i] = baseColor;
+
+                    tex.SetPixels(blankPixels);
+                    tex.Apply(); // تحديث كرت الشاشة فوراً
+                    Debug.Log("تم تصفير وبناء السطح بنجاح بورقة بيضاء فارغة!");
+                }
+            }
+        }
+
+        // دالة لجلب التيكستشر الفعلي المكتوب عليه لغرض الحفظ
+        public Texture2D GetCurrentSurfaceTexture()
+        {
+            Renderer rend = GetComponent<Renderer>();
+            if (rend != null && rend.material != null)
+            {
+                return rend.material.mainTexture as Texture2D;
+            }
+            return null;
+        }
         public void PaintAtUV(Vector2 uv, Color liquidColor, int baseRadius)
         {
             int cx = Mathf.Clamp((int)(uv.x * textureSize), 0, textureSize - 1);

@@ -46,6 +46,9 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
         private float _angleAcceleration;
         private bool _isRunning;
 
+        // --- خاصية عامة للحصول على قطر الثقب الحالي ديناميكياً لتستفيد منها بقية الكلاسات ---
+        public float CurrentApertureDiameter => _config != null ? _config.ApertureDiameter : 0.01f;
+
         private void Awake()
         {
             if (_startButton != null) _startButton.onClick.AddListener(StartSimulation);

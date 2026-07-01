@@ -1,8 +1,8 @@
-using UnityEngine;
+﻿using UnityEngine;
 using TMPro;
 using SwingingPaintBucket.Features.Pendulum.Data;
-using SwingingPaintBucket.Features.Pendulum.Interfaces;
 using SwingingPaintBucket.Features.Rope.Data;
+using SwingingPaintBucket.Features.Pendulum.Interfaces;
 
 namespace SwingingPaintBucket.Features.Pendulum.Services
 {
@@ -18,6 +18,9 @@ namespace SwingingPaintBucket.Features.Pendulum.Services
         public TMP_InputField initialPaintMassInput;
         public TMP_InputField ropeTypeInput;
 
+        // --- حقل الإدخال الجديد لقطر الثقب من الواجهة ---
+        public TMP_InputField bucketHoleDiameterInput;
+
         private const float DefaultLength = 3f;
         private const float DefaultGravity = 9.81f;
         private const float DefaultDamping = 0.05f;
@@ -25,6 +28,7 @@ namespace SwingingPaintBucket.Features.Pendulum.Services
         private const float DefaultOmega = 0f;
         private const float DefaultBaseMass = 1f;
         private const float DefaultPaintMass = 0.5f;
+        private const float DefaultApertureDiameter = 0.01f; // القيمة الافتراضية 0.01 كما في صورتكِ
         private const RopeType DefaultRopeType = RopeType.Rigid;
 
         public PendulumInputHandler() { }
@@ -47,6 +51,9 @@ namespace SwingingPaintBucket.Features.Pendulum.Services
             config.DampingCoefficient = ParseNonNegative(dampingInput?.text, DefaultDamping);
             config.BaseMass = ParsePositive(baseMassInput?.text, DefaultBaseMass);
             config.InitialPaintMass = ParseNonNegative(initialPaintMassInput?.text, DefaultPaintMass);
+
+            // --- قراءة قيمة قطر الثقب من حقل الإدخال في الواجهة ---
+            config.ApertureDiameter = ParsePositive(bucketHoleDiameterInput?.text, DefaultApertureDiameter);
 
             if (ropeTypeInput != null && !string.IsNullOrEmpty(ropeTypeInput.text))
             {
