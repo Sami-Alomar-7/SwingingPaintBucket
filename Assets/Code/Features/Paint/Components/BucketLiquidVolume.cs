@@ -7,19 +7,20 @@ namespace SwingingPaintBucket.Features.Paint.Components
     public class BucketLiquidVolume : MonoBehaviour
     {
         [Header("Cylinder Visual")]
-        [SerializeField] private Transform _glassOuterBox; // يمثل جسم الأسطوانة المحيط بالسائل
+        [SerializeField] private Transform _glassOuterBox;
         [SerializeField] private Material _liquidMaterial;
 
         [Header("Cylinder Dimensions")]
-        [SerializeField] private float _cylinderRadius = 0.5f;  // نصف قطر الأسطوانة (البديل لـ Extents.x و Extents.z)
-        [SerializeField] private float _cylinderHeight = 1.0f;  // الارتفاع الكلي للأسطوانة (البديل لـ Extents.y * 2)
+        [SerializeField] private float _cylinderRadius = 0.4f;
+        [SerializeField] private float _cylinderHeight = 0.8f;
         [SerializeField] private float _particleSize = 0.025f;
 
-        [Header("Liquid Physics")]
-        [SerializeField] private int _maxParticleCount = 600;
-        [SerializeField] private float _repulsionForce = 25f;
-        [SerializeField] private float _inertiaResponse = 5.0f;
-        [SerializeField] private float _sloshSensitivity = 0.5f;
+        [Header("Liquid Physics Settings")]
+        [SerializeField] private int _maxParticleCount = 400;
+        [SerializeField] private float _repulsionForce = 8f;     // خفض القوة لمنع الانفجار المفاجئ للجزيئات
+        [SerializeField] private float _viscosityDamping = 0.4f; // معامل لزوجة لإخماد الحركة الغازية العشوائية
+        [SerializeField] private float _inertiaResponse = 3.5f;
+        [SerializeField] private float _sloshSensitivity = 0.4f;
 
         [Header("References")]
         [SerializeField] private PendulumController _pendulum;
@@ -63,8 +64,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
         private void SetupCylinderLimits()
         {
-            // أقصى ارتفاع مسموح به للسائل بالنسبة لمركز الأسطوانة المحلي (عادة نصف الارتفاع)
-            _maxLiquidHeight = (_cylinderHeight / 2f) * 1.2f;
+            _maxLiquidHeight = _cylinderHeight * 0.85f;
 
             if (_liquidMaterial == null)
             {
@@ -102,21 +102,20 @@ namespace SwingingPaintBucket.Features.Paint.Components
             _particles.Clear();
 
             _activeParticlesRemaining = count;
-
             float halfHeight = _cylinderHeight / 2f;
 
             for (int i = 0; i < count; i++)
             {
                 LiquidParticle p = new LiquidParticle();
 
-                // التوليد العشوائي الموزع بانتظام داخل الأسطوانة الدائرية (Cylinder Distribution)
                 float angle = Random.Range(0f, Mathf.PI * 2f);
-                // استخدام الجذر التربيعي لضمان توزيع متناسق للجزيئات وعدم تكتلها في المركز
-                float r = _cylinderRadius * 0.85f * Mathf.Sqrt(Random.Range(0f, 1f));
+                float r = _cylinderRadius * 0.9f * Mathf.Sqrt(Random.Range(0f, 1f));
 
                 float x = r * Mathf.Cos(angle);
                 float z = r * Mathf.Sin(angle);
-                float y = Random.Range(-halfHeight * 0.85f, halfHeight * 0.2f);
+
+                // تعديل حاسم: حقن وتوليد الجزيئات مضغوطة ومستقرة في النصف السفلي من القاع حصراً لمنع الانفجار الابتدائي
+                float y = Random.Range(-halfHeight * 0.9f, -halfHeight * 0.1f);
 
                 p.localPosition = new Vector3(x, y, z);
                 p.initialLocalPosition = p.localPosition;
@@ -177,56 +176,66 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
         private void UpdateParticlePhysics()
         {
-            float dt = Mathf.Min(Time.deltaTime, 0.02f);
+            float dt = Mathf.Min(Time.deltaTime, 0.015f);
             Vector3 localGravity = new Vector3(0f, -9.81f, 0f);
 
+            // استخلاص متجهات حركة النواس وتمريرها داخل فضاء محاكاة السائل الأسطواني
             Vector3 localInertia = _glassOuterBox.InverseTransformDirection(_bucketAcceleration) * _inertiaResponse;
             Vector3 effectiveGravity = localGravity - localInertia;
 
             float halfHeight = _cylinderHeight / 2f;
-            float bounce = 0.4f;
-            float safeRadius = _cylinderRadius * 0.92f; // حد الأمان لمنع الاختراق الجانبي للأسطوانة
+            float bounce = 0.2f; // تقليل الارتداد للحفاظ على لزوجة المائع وثباته المائي
+            float safeRadius = _cylinderRadius * 0.94f;
+
+            // حساب السطح التلاطمي المائل بناءً على القصور الذاتي للتحكم بالسقف العلوي
+            float sloshX = Mathf.Clamp(-localInertia.x * _sloshSensitivity, -0.35f, 0.35f);
+            float sloshZ = Mathf.Clamp(-localInertia.z * _sloshSensitivity, -0.35f, 0.35f);
+            float baseLiquidTop = -halfHeight + (_currentLiquidLevel * _maxLiquidHeight);
 
             for (int i = 0; i < _particles.Count; i++)
             {
                 var p = _particles[i];
                 if (!p.isActive) continue;
 
+                // 1. تطبيق الجاذبية والتسارع الخارجي
                 p.velocity += effectiveGravity * dt;
 
-                // محرك التنافر البيني
+                // 2. تطبيق لزوجة السائل والتنافر المائي المستقر لمنع التصاق وتداخل الجزيئات في القاع
+                Vector3 repulsionForces = Vector3.zero;
                 for (int j = 0; j < _particles.Count; j++)
                 {
                     if (i == j || !_particles[j].isActive) continue;
                     Vector3 diff = p.localPosition - _particles[j].localPosition;
                     float dist = diff.magnitude;
-                    float targetDist = _particleSize * 2.2f;
+                    float targetDist = _particleSize * 2.5f;
 
                     if (dist < targetDist && dist > 0.001f)
                     {
                         float forceFactor = 1f - (dist / targetDist);
-                        p.velocity += diff.normalized * forceFactor * _repulsionForce * dt;
+                        repulsionForces += diff.normalized * forceFactor * _repulsionForce;
                     }
                 }
 
+                p.velocity += repulsionForces * dt;
+
+                // تطبيق التخميد المانع للانفجار العددي المتناسق مع لزوجة السوائل المائية
+                p.velocity *= (1f - _viscosityDamping);
                 p.localPosition += p.velocity * dt;
 
-                // === معالجة الجدران الدائرية للأسطوانة (Radial Collision) ===
+                // 3. الاصطدام الهندسي الدائري مع جدران الأسطوانة
                 Vector3 horizontalPos = new Vector3(p.localPosition.x, 0f, p.localPosition.z);
                 float currentRadius = horizontalPos.magnitude;
 
                 if (currentRadius > safeRadius)
                 {
-                    // إرجاع الجزيء إلى حدود الجدار الدائري الداخلي
                     Vector3 radialNormal = horizontalPos.normalized;
                     p.localPosition.x = radialNormal.x * safeRadius;
                     p.localPosition.z = radialNormal.z * safeRadius;
 
-                    // عكس مركبة السرعة الأفقية المتجهة نحو الخارج ليرتد للداخل
                     Vector3 horizontalVelocity = new Vector3(p.velocity.x, 0f, p.velocity.z);
                     float normalVelocityDot = Vector3.Dot(horizontalVelocity, radialNormal);
 
-                    if (normalVelocityDot > 0f) // يتحرك باتجاه الخارج
+                    if (normalVelocityDot > 0f)
                     {
                         Vector3 reflectedHorizontal = horizontalVelocity - (1f + bounce) * normalVelocityDot * radialNormal;
                         p.velocity.x = reflectedHorizontal.x;
@@ -234,12 +243,13 @@ namespace SwingingPaintBucket.Features.Paint.Components
                     }
                 }
 
-                // === معالجة السقف والقاع (Y Axis Constraints) ===
-                float maxAllowedHeight = halfHeight * 0.95f;
+                // 4. حصر السطح المتلاطم والمائل (منع الجزيئات من الطيران العشوائي المتناثر كالغاز)
+                float dynamicLiquidTop = baseLiquidTop + (p.localPosition.x * sloshX) + (p.localPosition.z * sloshZ);
+                dynamicLiquidTop = Mathf.Clamp(dynamicLiquidTop, -halfHeight * 0.8f, halfHeight * 0.95f);
 
-                if (p.localPosition.y > maxAllowedHeight)
+                if (p.localPosition.y > dynamicLiquidTop)
                 {
-                    p.localPosition.y = maxAllowedHeight;
+                    p.localPosition.y = dynamicLiquidTop;
                     p.velocity.y = -p.velocity.y * bounce;
                 }
                 else if (p.localPosition.y < -halfHeight * 0.92f)
