@@ -1,4 +1,4 @@
-﻿// الملف: IPaintSurfaceService.cs
+﻿
 using UnityEngine;
 using SwingingPaintBucket.Features.Surface.Components;
 

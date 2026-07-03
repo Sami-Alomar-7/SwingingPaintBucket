@@ -5,7 +5,7 @@ using SwingingPaintBucket.Features.Rope.Data;
 
 namespace SwingingPaintBucket.Features.Pendulum.Interfaces
 {
- 
+
     public interface IPendulumInputHandler
     {
         PendulumConfig ReadPendulumConfig();

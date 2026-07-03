@@ -4,7 +4,7 @@ using SwingingPaintBucket.Features.Paint.Data;
 using SwingingPaintBucket.Features.Paint.Interfaces;
 using SwingingPaintBucket.Features.Surface.Components;
 using SwingingPaintBucket.Features.Paint.Services;
-using SwingingPaintBucket.Features.Pendulum.Components; // إضافة النطاق الخاص بالمتحكم
+using SwingingPaintBucket.Features.Pendulum.Components;
 
 namespace SwingingPaintBucket.Features.Paint.Components
 {
@@ -17,7 +17,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
         public Transform surfaceSurface;
         public PaintSurfaceSystem paintSurfaceSystem;
         [SerializeField] private BucketLiquidVolume _bucketLiquidVolume;
-        [SerializeField] private PendulumController _pendulumController; // مرجع للمتحكم الأساسي لقراءة القطر
+        [SerializeField] private PendulumController _pendulumController;
 
         public object surfaceService
         {
@@ -70,17 +70,14 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 if (paintSurfaceSystem == null) paintSurfaceSystem = surfaceSurface.GetComponent<PaintSurfaceSystem>();
             }
         }
-        // داخل ملف PaintEmitter.cs - دالة Update
-        // داخل ملف PaintEmitter.cs - دالة Update المعدلة
         private void Update()
         {
             if (!_isRunning) return;
 
-            // الشرط المنقذ: إذا فرغ المكعب تماماً، اقطعي الرش فوراً ولا تطلقي أي جزيئات خارجية!
             if (_bucketLiquidVolume != null && _bucketLiquidVolume.IsEmpty)
             {
                 _emissionCutoff = true;
-                ClearParticles(); // تنظيف الجزيئات المعلقة في الهواء ليتوقف الرسم فوراً
+                ClearParticles();
                 return;
             }
 

@@ -1,4 +1,4 @@
-﻿// الملف: ParticleData.cs (معدل بالكامل)
+﻿
 using UnityEngine;
 
 namespace SwingingPaintBucket.Features.Paint.Data
@@ -11,7 +11,6 @@ namespace SwingingPaintBucket.Features.Paint.Data
         public Color color;
         public float size;
 
-        // خصائص محرك SPH الأصلية
         public float density;
         public float inverseDensity;
         public float pressure;
@@ -19,8 +18,7 @@ namespace SwingingPaintBucket.Features.Paint.Data
         public Vector3 colorFieldGradient;
         public float colorFieldLaplacian;
 
-        // تحسين: إضافة حالة الاستقرار الفراغي ثلاثي الأبعاد
-        public bool isGrounded; // هل استقر الجزيء على السطح؟
+        public bool isGrounded;
 
         public ParticleData(Vector3 position, Vector3 velocity, float lifeRemaining, Color color, float size)
         {
@@ -37,7 +35,7 @@ namespace SwingingPaintBucket.Features.Paint.Data
             this.colorFieldGradient = Vector3.zero;
             this.colorFieldLaplacian = 0f;
 
-            this.isGrounded = false; // افتراضياً الجزيء ينطلق في الهواء
+            this.isGrounded = false;
         }
     }
 }

@@ -17,8 +17,8 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
         [Header("Liquid Physics Settings")]
         [SerializeField] private int _maxParticleCount = 400;
-        [SerializeField] private float _repulsionForce = 8f;     // خفض القوة لمنع الانفجار المفاجئ للجزيئات
-        [SerializeField] private float _viscosityDamping = 0.4f; // معامل لزوجة لإخماد الحركة الغازية العشوائية
+        [SerializeField] private float _repulsionForce = 8f;
+        [SerializeField] private float _viscosityDamping = 0.4f;
         [SerializeField] private float _inertiaResponse = 3.5f;
         [SerializeField] private float _sloshSensitivity = 0.4f;
 
@@ -114,7 +114,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 float x = r * Mathf.Cos(angle);
                 float z = r * Mathf.Sin(angle);
 
-                // تعديل حاسم: حقن وتوليد الجزيئات مضغوطة ومستقرة في النصف السفلي من القاع حصراً لمنع الانفجار الابتدائي
                 float y = Random.Range(-halfHeight * 0.9f, -halfHeight * 0.1f);
 
                 p.localPosition = new Vector3(x, y, z);
@@ -179,15 +178,13 @@ namespace SwingingPaintBucket.Features.Paint.Components
             float dt = Mathf.Min(Time.deltaTime, 0.015f);
             Vector3 localGravity = new Vector3(0f, -9.81f, 0f);
 
-            // استخلاص متجهات حركة النواس وتمريرها داخل فضاء محاكاة السائل الأسطواني
             Vector3 localInertia = _glassOuterBox.InverseTransformDirection(_bucketAcceleration) * _inertiaResponse;
             Vector3 effectiveGravity = localGravity - localInertia;
 
             float halfHeight = _cylinderHeight / 2f;
-            float bounce = 0.2f; // تقليل الارتداد للحفاظ على لزوجة المائع وثباته المائي
+            float bounce = 0.2f;
             float safeRadius = _cylinderRadius * 0.94f;
 
-            // حساب السطح التلاطمي المائل بناءً على القصور الذاتي للتحكم بالسقف العلوي
             float sloshX = Mathf.Clamp(-localInertia.x * _sloshSensitivity, -0.35f, 0.35f);
             float sloshZ = Mathf.Clamp(-localInertia.z * _sloshSensitivity, -0.35f, 0.35f);
             float baseLiquidTop = -halfHeight + (_currentLiquidLevel * _maxLiquidHeight);
@@ -197,10 +194,8 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 var p = _particles[i];
                 if (!p.isActive) continue;
 
-                // 1. تطبيق الجاذبية والتسارع الخارجي
                 p.velocity += effectiveGravity * dt;
 
-                // 2. تطبيق لزوجة السائل والتنافر المائي المستقر لمنع التصاق وتداخل الجزيئات في القاع
                 Vector3 repulsionForces = Vector3.zero;
                 for (int j = 0; j < _particles.Count; j++)
                 {
@@ -218,11 +213,9 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
                 p.velocity += repulsionForces * dt;
 
-                // تطبيق التخميد المانع للانفجار العددي المتناسق مع لزوجة السوائل المائية
                 p.velocity *= (1f - _viscosityDamping);
                 p.localPosition += p.velocity * dt;
 
-                // 3. الاصطدام الهندسي الدائري مع جدران الأسطوانة
                 Vector3 horizontalPos = new Vector3(p.localPosition.x, 0f, p.localPosition.z);
                 float currentRadius = horizontalPos.magnitude;
 
@@ -243,7 +236,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
                     }
                 }
 
-                // 4. حصر السطح المتلاطم والمائل (منع الجزيئات من الطيران العشوائي المتناثر كالغاز)
                 float dynamicLiquidTop = baseLiquidTop + (p.localPosition.x * sloshX) + (p.localPosition.z * sloshZ);
                 dynamicLiquidTop = Mathf.Clamp(dynamicLiquidTop, -halfHeight * 0.8f, halfHeight * 0.95f);
 

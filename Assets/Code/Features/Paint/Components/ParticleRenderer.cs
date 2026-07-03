@@ -46,7 +46,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
         private MaterialPropertyBlock _propertyBlock;
         private static readonly int ColorShaderID = Shader.PropertyToID("_Color");
-        private static readonly int BaseColorShaderID = Shader.PropertyToID("_BaseColor"); // توافق URP Lit البديل
+        private static readonly int BaseColorShaderID = Shader.PropertyToID("_BaseColor");
 
         private void Awake()
         {
@@ -75,7 +75,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
                 go.transform.position = p.position;
 
-                // تكبير الحجم البصري ليتداخل الجزيء مع جيرانه فيظهر العنقود ككتلة سائلة متصلة
                 float size = p.size > 0f ? p.size : defaultSize;
                 float baseScale = Mathf.Max(size * liquidScaleMultiplier, 0.01f);
 
@@ -106,7 +105,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
             }
         }
 
-        // تمطيط الجزيء بمحاذاة سرعته (مع الحفاظ التقريبي على الحجم) فيبدو كخيط سائل متدفق
         private void ApplyShapeAndOrientation(Transform t, Vector3 velocity, float baseScale)
         {
             float speed = velocity.magnitude;
@@ -119,19 +117,18 @@ namespace SwingingPaintBucket.Features.Paint.Components
             }
 
             float stretch = Mathf.Min(1f + (speed - stretchThreshold) * stretchPerSpeed, maxStretch);
-            float shrink = 1f / Mathf.Sqrt(stretch); // تقليص المحورين العرضيين لتقريب حفظ الحجم
+            float shrink = 1f / Mathf.Sqrt(stretch);
 
             Vector3 dir = velocity / speed;
             t.rotation = Quaternion.FromToRotation(Vector3.up, dir);
             t.localScale = new Vector3(baseScale * shrink, baseScale * stretch, baseScale * shrink);
         }
 
-        // استخدام كثافة SPH لإضافة عمق لوني: التجمعات الكثيفة أعمق، الأطراف الرقيقة أفتح قليلاً
         private Color ApplyDensityDepth(Color baseColor, float density)
         {
             float refDensity = Mathf.Max(referenceDensity, 0.0001f);
             float depth = Mathf.InverseLerp(refDensity * 0.3f, refDensity * 1.5f, density);
-            float brightness = Mathf.Lerp(1.15f, 0.8f, depth); // حد آمن [0.8 , 1.15] لتفادي أي شذوذ
+            float brightness = Mathf.Lerp(1.15f, 0.8f, depth);
 
             return new Color(
                 Mathf.Clamp01(baseColor.r * brightness),
@@ -158,7 +155,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 Renderer rend = go.GetComponent<Renderer>();
                 if (rend != null)
                 {
-                    // خامة سائل لامعة واحدة مشتركة بين كل الجزيئات (اللون يتغير لكل جزيء عبر PropertyBlock)
                     rend.sharedMaterial = GetOrCreateLiquidMaterial();
                     rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                     rend.receiveShadows = false;
@@ -170,7 +166,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
         private Material GetOrCreateLiquidMaterial()
         {
-            // احترام أي خامة معيّنة يدوياً من المفتش
             if (particleMaterial != null)
             {
                 ApplyLiquidProperties(particleMaterial);
@@ -178,7 +173,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
             }
 
             if (_liquidMaterial != null) return _liquidMaterial;
-           // تسلسل بدائل آمن: الشيدر المخصص ← URP Lit ← Unlit/Color
             Shader liquidShader = Shader.Find("SwingingPaintBucket/LiquidParticle");
             if (liquidShader == null) liquidShader = Shader.Find("Universal Render Pipeline/Lit");
             if (liquidShader == null) liquidShader = Shader.Find("Unlit/Color");
@@ -195,7 +189,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
             if (m.HasProperty("_SpecIntensity")) m.SetFloat("_SpecIntensity", specularIntensity);
             if (m.HasProperty("_FresnelStrength")) m.SetFloat("_FresnelStrength", fresnelStrength);
             if (m.HasProperty("_Translucency")) m.SetFloat("_Translucency", translucency);
-            if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", 0.1f); // للبديل URP Lit
+            if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", 0.1f);
         }
     }
 }

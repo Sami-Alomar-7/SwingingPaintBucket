@@ -4,7 +4,7 @@ using SwingingPaintBucket.Features.Pendulum.Data;
 
 namespace SwingingPaintBucket.Features.ExternalForces.Services
 {
- 
+
     public class DragForce : IForceProvider
     {
         private readonly float _fallbackDragCoefficient;

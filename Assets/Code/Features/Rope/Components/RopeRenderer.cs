@@ -29,25 +29,20 @@ namespace SwingingPaintBucket.Features.Rope.Components
             _lineRenderer.endColor = Color.gray;
         }
 
-        /// <inheritdoc />
         public void UpdateRope(Vector3 pivotPos, Vector3 bucketPos)
         {
             if (_lineRenderer == null) return;
 
-            // رسم مكان الحبل الأساسي
             _lineRenderer.SetPosition(0, pivotPos);
             _lineRenderer.SetPosition(1, bucketPos);
 
-            // 🌟 التأثير البصري المطور لتمدد ونحافة الحبل في الزمن الحقيقي
             if (_activeConfig != null && _activeConfig.AllowStretch && _activeConfig.RestLength > 0f)
             {
                 float currentLength = Vector3.Distance(pivotPos, bucketPos);
 
-                // حساب معامل الاستطالة (إذا كان أكبر من 1 يعني الحبل ممدود)
                 float stretchFactor = currentLength / _activeConfig.RestLength;
-                stretchFactor = Mathf.Max(1f, stretchFactor); // حصر المعامل لمنع التضخم عند الانكماش
+                stretchFactor = Mathf.Max(1f, stretchFactor);
 
-                // قاعدة فيزيائية: كلما زاد الطول قل السمك (الحفاظ على الحجم بصرياً)
                 float dynamicWidthFactor = 1f / Mathf.Sqrt(stretchFactor);
 
                 _lineRenderer.startWidth = _activeConfig.StartWidth * dynamicWidthFactor;

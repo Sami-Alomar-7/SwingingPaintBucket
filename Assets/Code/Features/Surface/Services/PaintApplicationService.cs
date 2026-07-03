@@ -1,4 +1,4 @@
-﻿// الملف: PaintApplicationService.cs
+﻿
 using UnityEngine;
 using SwingingPaintBucket.Features.Surface.Interfaces;
 using SwingingPaintBucket.Features.Surface.Components;
@@ -11,7 +11,6 @@ namespace SwingingPaintBucket.Features.Surface.Services
         {
             if (surfaceSystem == null) return;
 
-            // تحويل فوري من العالم ثلاثي الأبعاد إلى مصفوفة الرسم المباشر
             if (surfaceSystem.WorldToGridCoords(worldPosition, out int gridX, out int gridY))
             {
                 surfaceSystem.ApplyPhysicalPaint(gridX, gridY, color, brushRadius);
@@ -20,7 +19,7 @@ namespace SwingingPaintBucket.Features.Surface.Services
 
         public void Paint(Texture2D texture, Vector2 uv, Color color, int brushRadius)
         {
-            // بقيت هنا للتوافق البرمجي، إذا تم استدعاؤها تبحث عن أي سطح نشط
+
             var surface = Object.FindObjectOfType<PaintSurfaceSystem>();
             if (surface != null) surface.PaintAtUV(uv, color, brushRadius);
         }

@@ -7,22 +7,18 @@ using SwingingPaintBucket.Features.Surface.Data;
 
 namespace SwingingPaintBucket.Features.Paint.Services
 {
-    /// <summary>
-    /// محرك SPH احترافي (Müller 2003) معاد هيكلته للأداء والاستقرار:
-    /// 1) بحث الجيران عبر تجزئة فراغية (Spatial Hash Grid) بدل المقارنة الثنائية O(n²).
-    /// 2) تخزين مؤقت لمرجع السطح بدل البحث في المشهد كل إطار.
-    /// 3) إعادة استخدام كل المخازن المؤقتة لمنع ضغط الـ GC.
-    /// 4) دمج زمني شبه-ضمني مع تقييد CFL لمنع انفجار المحاكاة.
-    /// </summary>
+
+
+
+
+
     public class ParticlePhysicsService : IParticlePhysicsService
     {
         private const float PI = Mathf.PI;
 
-        // حدود الأمان لمنع الانفجار العددي (Numerical Blow-up)
         private const float MaxAcceleration = 200f;
         private const float MaxSpeed = 40f;
 
-        // ===== مخازن معاد استخدامها عبر الإطارات (Zero per-frame allocation) =====
         private readonly Dictionary<long, List<int>> _grid = new Dictionary<long, List<int>>(1024);
         private readonly List<List<int>> _cellPool = new List<List<int>>();
         private int _cellPoolUsed;
@@ -30,7 +26,6 @@ namespace SwingingPaintBucket.Features.Paint.Services
         private readonly List<int> _toRemove = new List<int>(64);
         private float _cellSize = 0.1f;
 
-        // مرجع السطح مخزن مؤقتاً لتفادي FindObjectOfType في كل FixedUpdate
         private PaintSurfaceSystem _cachedSurface;
 
         public List<int> UpdateParticles(List<ParticleData> particles, float deltaTime, float surfaceY, PaintEmissionConfig config)
@@ -38,21 +33,19 @@ namespace SwingingPaintBucket.Features.Paint.Services
             _toRemove.Clear();
             if (particles == null || particles.Count == 0 || config == null) return _toRemove;
 
-            // جلب نوع المادة من السطح المخزن مؤقتاً (قراءة materialType رخيصة وتعكس تغييرات القائمة فوراً)
             if (_cachedSurface == null) _cachedSurface = Object.FindObjectOfType<PaintSurfaceSystem>();
             SurfaceMaterialType material = _cachedSurface != null ? _cachedSurface.materialType : SurfaceMaterialType.Wood;
 
-            // تحديد الاحتكاك (Friction) والامتصاص (Absorption) بحسب نوع السطح
             float friction = 0.2f;
             float absorption = 0.0f;
             switch (material)
             {
                 case SurfaceMaterialType.Wood:
-                    friction = 0.8f; absorption = 0.2f; break; // احتكاك قوي يثبت الكرات مكانها
+                    friction = 0.8f; absorption = 0.2f; break;
                 case SurfaceMaterialType.Metal:
-                    friction = 0.05f; absorption = 0.0f; break; // انزلاق سلس للجزيئات
+                    friction = 0.05f; absorption = 0.0f; break;
                 case SurfaceMaterialType.Paper:
-                    friction = 0.4f; absorption = 0.9f; break; // امتصاص هائل يجعل الجزيء ينكمش ويختفي بسرعة
+                    friction = 0.4f; absorption = 0.9f; break;
                 case SurfaceMaterialType.Glass:
                     friction = 0.01f; absorption = 0.0f; break;
             }
@@ -68,15 +61,12 @@ namespace SwingingPaintBucket.Features.Paint.Services
 
             int count = particles.Count;
 
-            // ثوابت نوى SPH ثلاثية الأبعاد (Poly6 / Spiky / Viscosity-Laplacian)
             float poly6Constant = 315f / (64f * PI * Mathf.Pow(h, 9));
             float spikyGradientConstant = -45f / (PI * Mathf.Pow(h, 6));
             float viscLaplacianConstant = 45f / (PI * Mathf.Pow(h, 6));
 
-            // بناء شبكة التجزئة الفراغية بحجم خلية = نصف قطر التنعيم h
             BuildGrid(particles, count, h);
 
-            // ===== المرحلة 1: حساب الكثافة والضغط لكل جزيء عبر جيرانه فقط =====
             for (int i = 0; i < count; i++)
             {
                 ParticleData pi = particles[i];
@@ -96,11 +86,10 @@ namespace SwingingPaintBucket.Features.Paint.Services
 
                 if (density < restDensity * 0.1f) density = restDensity * 0.1f;
                 pi.density = density;
-                pi.pressure = Mathf.Max(0f, k * (density - restDensity)); // لا ضغط شدّي لتفادي عدم الاستقرار
+                pi.pressure = Mathf.Max(0f, k * (density - restDensity));
                 pi.inverseDensity = 1f / density;
             }
 
-            // ===== المرحلة 2: حساب قوى الضغط واللزوجة والتوتر السطحي =====
             for (int i = 0; i < count; i++)
             {
                 ParticleData pi = particles[i];
@@ -149,7 +138,6 @@ namespace SwingingPaintBucket.Features.Paint.Services
                 pi.forcePhysics = forcePressure + forceViscosity + forceSurfaceTension;
             }
 
-            // ===== المرحلة 3: الدمج الزمني والاصطدام مع السطح =====
             for (int i = 0; i < count; i++)
             {
                 ParticleData p = particles[i];
@@ -158,14 +146,13 @@ namespace SwingingPaintBucket.Features.Paint.Services
                 if (acceleration.sqrMagnitude > MaxAcceleration * MaxAcceleration)
                     acceleration = acceleration.normalized * MaxAcceleration;
 
-                // دمج شبه-ضمني (Semi-implicit Euler) مع تقييد السرعة (CFL) لمنع الانفجار
                 p.velocity += acceleration * deltaTime;
                 if (p.velocity.sqrMagnitude > MaxSpeed * MaxSpeed)
                     p.velocity = p.velocity.normalized * MaxSpeed;
 
                 p.position += p.velocity * deltaTime;
                 p.lifeRemaining -= deltaTime;
-                // امتصاص السطح: تقليص حجم الجزيء المستقر حتى يختفي
+
                 if (p.isGrounded && absorption > 0f)
                 {
                     p.size = Mathf.MoveTowards(p.size, 0f, absorption * deltaTime * 0.04f);
@@ -176,7 +163,6 @@ namespace SwingingPaintBucket.Features.Paint.Services
                     }
                 }
 
-                // اصطدام مستوى السطح + احتكاك أفقي
                 if (p.position.y <= surfaceY + 0.02f)
                 {
                     p.position.y = surfaceY + 0.01f;
@@ -187,15 +173,12 @@ namespace SwingingPaintBucket.Features.Paint.Services
                     p.velocity.y = 0f;
                 }
 
-                // الجزيئات الطائرة فقط تنتهي بانتهاء عمرها (المستقرة تبقى كبقعة)
                 if (p.lifeRemaining <= 0f && !p.isGrounded)
                     _toRemove.Add(i);
             }
 
             return _toRemove;
         }
-
-        // ===================== تجزئة فراغية (Spatial Hash Grid) =====================
 
         private void BuildGrid(List<ParticleData> particles, int count, float h)
         {
@@ -210,7 +193,6 @@ namespace SwingingPaintBucket.Features.Paint.Services
             }
         }
 
-        // تجميع مرشحي الجيران من الخلايا الـ27 المحيطة (3×3×3)
         private void CollectNeighbors(Vector3 position)
         {
             _neighbors.Clear();
@@ -230,7 +212,6 @@ namespace SwingingPaintBucket.Features.Paint.Services
 
         private int FloorToCell(float v) => Mathf.FloorToInt(v / _cellSize);
 
-        // دالة تجزئة Teschner et al. — التصادمات نادرة وتُصحَّح لاحقاً بفحص المسافة الفعلي
         private static long CellKey(int x, int y, int z)
         {
             const long p1 = 73856093;
@@ -252,7 +233,7 @@ namespace SwingingPaintBucket.Features.Paint.Services
         private void ClearGrid()
         {
             _grid.Clear();
-            _cellPoolUsed = 0; // القوائم تبقى في المخزن وتُمسح عند إعادة طلبها
+            _cellPoolUsed = 0;
         }
 
         private List<int> RentCell()

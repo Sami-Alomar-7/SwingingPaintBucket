@@ -9,7 +9,6 @@ namespace SwingingPaintBucket.Features.Paint.Interfaces
         float CalculateEmissionRate(Vector3 bucketVelocity, PaintEmissionConfig config);
         void EmitParticle(PaintEmissionConfig config, Vector3 spawnPosition, Vector3 bucketVelocity, List<ParticleData> particles);
 
-        // الدالة المضافة للربط الفيزيائي النظيف
         void EmitPhysicalParticle(PaintEmissionConfig config, Vector3 worldPosition, Vector3 fluidVelocity, List<ParticleData> particles);
     }
 }

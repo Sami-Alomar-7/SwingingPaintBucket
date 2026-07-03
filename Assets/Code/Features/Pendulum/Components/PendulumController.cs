@@ -46,7 +46,6 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
         private float _angleAcceleration;
         private bool _isRunning;
 
-        // --- خاصية عامة للحصول على قطر الثقب الحالي ديناميكياً لتستفيد منها بقية الكلاسات ---
         public float CurrentApertureDiameter => _config != null ? _config.ApertureDiameter : 0.01f;
 
         private void Awake()
@@ -68,7 +67,6 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             if (PhysicsEngine == null) PhysicsEngine = new PendulumPhysicsService();
             if (MassProvider == null) MassProvider = new MassSystem();
 
-            // إعداد القوى الخارجية المؤثرة في البيئة
             ForceProviders = new List<IForceProvider>
             {
                 new GravityForce(MassProvider),
@@ -104,7 +102,7 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             {
                 if (_config.CurrentRopeType == RopeType.Rigid)
                 {
-                    // الحبل الصلب (Rigid): يتم فصل قوة الأرض العمودية لتجنب تشويه العزم الزاوي
+
                     var rigidForces = new List<IForceProvider>();
                     foreach (var fp in ForceProviders)
                     {
@@ -114,7 +112,7 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
                 }
                 else
                 {
-                    // الحبال المطاطية: تأخذ كل القوى المؤثرة بما فيها الاصطدام الشامل
+
                     _angleAcceleration = PhysicsEngine.ComputeAngularAcceleration(_state, _config, totalMass, ForceProviders);
                 }
             }
@@ -139,21 +137,17 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
                 _config.RopeConfig.RestLength = length;
             }
 
-            // حساب الموضع الافتراضي بناءً على الزاوية الحقيقية المطلوبة من المستخدم أولاً
             Vector3 proposedPosition = pivotPos + length * new Vector3(Mathf.Sin(_state.Theta), -Mathf.Cos(_state.Theta), 0f);
 
-            // التحقق مما إذا كان الموضع المختار بالزاوية الكبيرة يخترق الأرض فعلياً عند البداية
             if (proposedPosition.y < _groundLevel)
             {
                 proposedPosition.y = _groundLevel;
 
-                // إعادة تصحيح الزاوية الابتدائية لتتطابق هندسياً مع ملامسة الأرض ومنع الانفجار
                 float dx = proposedPosition.x - pivotPos.x;
                 float dy = pivotPos.y - _groundLevel;
                 _state.Theta = Mathf.Atan2(dx, dy);
             }
 
-            // اعتماد الموضع النهائي الآمن والمستقر
             _state.BucketPosition = proposedPosition;
 
             Vector3 tangentialDir = new Vector3(Mathf.Cos(_state.Theta), Mathf.Sin(_state.Theta), 0f);
@@ -229,35 +223,30 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
         {
             if (_config != null && _config.CurrentRopeType == RopeType.Rigid)
             {
-                // دمج الحركة الزاوية الكلاسيكية للنواس الجاسئ
+
                 _state.Omega += _angleAcceleration * dt;
                 _state.Theta += _state.Omega * dt;
                 _state.Theta = Mathf.Clamp(_state.Theta, -Mathf.PI, Mathf.PI);
 
                 _state.BucketPosition = pivotPos + length * new Vector3(Mathf.Sin(_state.Theta), -Mathf.Cos(_state.Theta), 0f);
 
-                // معالجة الاصطدام الصارم لمنع اختراق الريجيد للأرض أثناء الأرجحة
                 if (_state.BucketPosition.y < _groundLevel)
                 {
                     float verticalDistance = pivotPos.y - _groundLevel;
                     float maxAllowedTheta = Mathf.Acos(Mathf.Clamp(verticalDistance / length, 0f, 1f));
 
-                    // تثبيت الزاوية عند حد التماس السطحي ومنع التجاوز
                     _state.Theta = Mathf.Sign(_state.Theta) * maxAllowedTheta;
 
-                    // ارتداد فيزيائي يعكس اتجاه السرعة الزاوية مع امتصاص جزء من الطاقة
                     _state.Omega = -_state.Omega * 0.3f;
 
-                    // إعادة حساب الموضع بدقة ليكون ملاصقاً تماماً للأرض دون تداخل
                     _state.BucketPosition = pivotPos + length * new Vector3(Mathf.Sin(_state.Theta), -Mathf.Cos(_state.Theta), 0f);
                 }
 
-                // تحديث السرعة الخطية المتوافقة مع أوميغا المعدلة
                 _state.Velocity = new Vector3(Mathf.Cos(_state.Theta), Mathf.Sin(_state.Theta), 0f) * (_state.Omega * length);
             }
             else
             {
-                // دمج الفيزياء المطاطية ثلاثية الأبعاد الحرة
+
                 IntegrateElasticPhysics(dt, pivotPos, length);
             }
 
@@ -315,7 +304,6 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             _state.Velocity += (totalForce / totalMass) * dt;
             _state.BucketPosition += _state.Velocity * dt;
 
-            // حماية إضافية نهائية للأنواع المطاطية لمنع اختراق الحسابات الفراغية
             if (_state.BucketPosition.y < _groundLevel)
             {
                 _state.BucketPosition.y = _groundLevel;

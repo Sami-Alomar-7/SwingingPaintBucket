@@ -10,7 +10,6 @@ namespace SwingingPaintBucket.Features.Surface.Services
         {
             if (surfaceSystem == null) return;
 
-            // تحويل فوري من العالم ثلاثي الأبعاد إلى مصفوفة الرسم المباشر
             if (surfaceSystem.WorldToGridCoords(worldPosition, out int gridX, out int gridY))
             {
                 surfaceSystem.ApplyPhysicalPaint(gridX, gridY, color, brushRadius);
