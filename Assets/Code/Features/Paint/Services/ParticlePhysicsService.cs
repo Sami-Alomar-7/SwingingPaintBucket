@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections.Generic;
 using SwingingPaintBucket.Features.Paint.Data;
 using SwingingPaintBucket.Features.Paint.Interfaces;
@@ -141,7 +141,15 @@ namespace SwingingPaintBucket.Features.Paint.Services
             for (int i = 0; i < count; i++)
             {
                 ParticleData p = particles[i];
-                Vector3 acceleration = (p.forcePhysics * p.inverseDensity) + new Vector3(0f, -gravity, 0f);
+                
+                Vector3 sphForce = p.forcePhysics * p.inverseDensity;
+                
+                // كبح القوى الأفقية الناتجة عن تدافع SPH لمنع التناثر العشوائي خارج مسار السقوط
+                // هذا يضمن أن الجزيئات تسقط تماماً مكان الإسقاط الخاص بالفتحة ولا تتناثر بعيداً
+                sphForce.x *= 0.01f;
+                sphForce.z *= 0.01f;
+
+                Vector3 acceleration = sphForce + new Vector3(0f, -gravity, 0f);
 
                 if (acceleration.sqrMagnitude > MaxAcceleration * MaxAcceleration)
                     acceleration = acceleration.normalized * MaxAcceleration;

@@ -96,12 +96,16 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 // جلب القطر الحالي من البندول بأمان
                 float currentDiameter = _pendulumController != null ? _pendulumController.CurrentApertureDiameter : 0.01f;
 
+                // حساب مساحة الفتحة لضبط كمية التدفق بدقة
+                float radius = currentDiameter * 0.5f;
+                float baseRadius = 0.005f; // لقطر 0.01
+                float areaRatio = (radius * radius) / (baseRadius * baseRadius);
 
                 // حساب معدل الانبعاث الأساسي بناءً على حركة الدلو
                 float baseSpawnRate = emissionService.CalculateEmissionRate(bucketVelocity, emissionConfig);
 
-                // تحديد معدل ضخ متزن (بين 60 و 120 جسيم في الثانية) لحماية المعالج من الـ Lag
-                float spawnRate = Mathf.Clamp(baseSpawnRate * (currentDiameter / 0.01f) * 2f, 60f, 120f);
+                // زيادة كمية الجزيئات طردياً مع مساحة الفتحة ليتدفق السائل بكمية أكبر عندما تكون الفتحة أكبر
+                float spawnRate = Mathf.Clamp(baseSpawnRate * areaRatio, 30f, 3000f);
 
                 float interval = spawnRate > 0f ? 1f / spawnRate : float.MaxValue;
 
@@ -109,20 +113,26 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 {
                     _emissionTimer -= interval;
 
-                    // صمام أمان الأداء: تحديد الحد الأقصى بـ 200 جسيم فقط متواجدين في الهواء معاً
-                    if (_particles.Count < 900)
+                    // رفع الحد الأقصى للجزيئات للسماح بتدفق أكبر للفتحات الواسعة
+                    if (_particles.Count < 3000)
                     {
                         Vector3 origin = spawnPoint != null ? spawnPoint.position : (bucket != null ? bucket.position - bucket.up * 0.3f : transform.position);
 
-                        // تضييق الانتشار العشوائي ليخرج الطلاء كخيط رفيع متناسق
-                        float r = currentDiameter * 0.1f;
-                        Vector3 randomOffset = new Vector3(Random.Range(-r, r), 0f, Random.Range(-r, r));
+                        // توزيع الجزيئات عشوائياً ولكن ضمن مساحة الفتحة الدائرية فقط (بدون تجاوز محيط الفتحة)
+                        Vector2 randomCircle = Random.insideUnitCircle * radius;
+                        Vector3 randomOffset = new Vector3(randomCircle.x, 0f, randomCircle.y);
                         Vector3 finalSpawnPos = origin + (spawnPoint != null ? spawnPoint.TransformDirection(randomOffset) : (bucket != null ? bucket.TransformDirection(randomOffset) : randomOffset));
 
-                        // تكبير حجم الجسيم المرئي قليلاً لكي يتلاحم مع الجسيم السابق أثناء السقوط فيظهر كالسائل المتصل
+                        // تثبيت حجم الجزيئات بغض النظر عن قطر الفتحة
                         emissionConfig.particleSize = 0.035f;
 
-                        emissionService.EmitParticle(emissionConfig, finalSpawnPos, bucketVelocity, _particles);
+                        // إضافة سرعة خروج السائل من الفتحة (Torricelli's Law) لأسفل الدلو
+                        // لمنع تراكم الجزيئات وانفجارها عند نقطة الخروج
+                        Vector3 exitDir = bucket != null ? -bucket.up : Vector3.down;
+                        float effluxSpeed = Mathf.Sqrt(2f * 9.81f * 0.3f); // افتراض ارتفاع السائل 0.3 متر
+                        Vector3 particleInitialVelocity = bucketVelocity + (exitDir * effluxSpeed);
+
+                        emissionService.EmitParticle(emissionConfig, finalSpawnPos, particleInitialVelocity, _particles);
                         massLossNotifier?.NotifyParticleEmitted(emissionConfig.particleMass);
 
                         if (_bucketLiquidVolume != null)
