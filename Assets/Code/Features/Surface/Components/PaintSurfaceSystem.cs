@@ -1,5 +1,4 @@
-﻿
-using UnityEngine;
+﻿using UnityEngine;
 using SwingingPaintBucket.Features.Surface.Data;
 
 namespace SwingingPaintBucket.Features.Surface.Components
@@ -85,7 +84,6 @@ namespace SwingingPaintBucket.Features.Surface.Components
 
             if (_rend != null && selectedMaterial != null)
             {
-
                 _instanceMaterial = new Material(selectedMaterial);
                 _rend.material = _instanceMaterial;
             }
@@ -131,6 +129,14 @@ namespace SwingingPaintBucket.Features.Surface.Components
             }
         }
 
+        // دالة جديدة لتحديث نوع السطح أثناء اللعب فوراً من القائمة المنسدلة بدون إعادة تحميل المشهد
+        public void ChangeSurfaceMaterialType(int typeIndex)
+        {
+            materialType = (SurfaceMaterialType)typeIndex;
+            InitializeSurface();
+            Debug.Log($"تم تغيير مادة الأرضية إلى: {materialType}");
+        }
+
         public bool WorldToGridCoords(Vector3 worldPos, out int x, out int y)
         {
             x = 0; y = 0;
@@ -171,11 +177,30 @@ namespace SwingingPaintBucket.Features.Surface.Components
 
                         if (sqrDistance > r2 * 0.6f && Random.value < targetCell.Roughness * 0.5f) continue;
 
-                        _surfaceGrid[px, py].PaintAccumulation += 0.1f;
+                        // الحسابات الفيزيائية المحدثة لدمج الألوان الاحترافي:
+                        float oldAccumulation = _surfaceGrid[px, py].PaintAccumulation;
+                        float incomingPaintAmount = 0.25f; // وزن حجم القطرة الساقطة الجديدة
 
-                        Color blendedColor = Color.Lerp(_surfaceGrid[px, py].CurrentColor, liquidColor, 0.75f);
+                        _surfaceGrid[px, py].PaintAccumulation += incomingPaintAmount;
+
+                        Color blendedColor;
+                        if (oldAccumulation == 0f)
+                        {
+                            // إذا كان البكسل فارغاً (أبيض)، يأخذ لون القطرة مباشرة بخلط خفيف مع نسيج الأرضية الأساسي
+                            blendedColor = Color.Lerp(_surfaceGrid[px, py].CurrentColor, liquidColor, 0.85f);
+                        }
+                        else
+                        {
+                            // دمج فيزيائي يعتمد على النسبة والتناسب بين الطلاء القديم والجديد للحصول على لون ثالث ناتج عن الخلط
+                            float blendRatio = incomingPaintAmount / (_surfaceGrid[px, py].PaintAccumulation);
+
+                            blendedColor.r = Mathf.Lerp(_surfaceGrid[px, py].CurrentColor.r, liquidColor.r, blendRatio);
+                            blendedColor.g = Mathf.Lerp(_surfaceGrid[px, py].CurrentColor.g, liquidColor.g, blendRatio);
+                            blendedColor.b = Mathf.Lerp(_surfaceGrid[px, py].CurrentColor.b, liquidColor.b, blendRatio);
+                            blendedColor.a = Mathf.Max(_surfaceGrid[px, py].CurrentColor.a, liquidColor.a);
+                        }
+
                         _surfaceGrid[px, py].CurrentColor = blendedColor;
-
                         _texture.SetPixel(px, py, blendedColor);
                         _isDirty = true;
                     }
@@ -185,7 +210,6 @@ namespace SwingingPaintBucket.Features.Surface.Components
 
         public void ClearSurfaceCustom()
         {
-
             if (_surfaceGrid != null)
             {
                 int width = _surfaceGrid.GetLength(0);
@@ -203,7 +227,6 @@ namespace SwingingPaintBucket.Features.Surface.Components
             Renderer rend = GetComponent<Renderer>();
             if (rend != null && rend.material != null)
             {
-
                 Texture2D tex = rend.material.mainTexture as Texture2D;
                 if (tex != null)
                 {
@@ -226,6 +249,7 @@ namespace SwingingPaintBucket.Features.Surface.Components
             }
             return null;
         }
+
         public void PaintAtUV(Vector2 uv, Color liquidColor, int baseRadius)
         {
             int cx = Mathf.Clamp((int)(uv.x * textureSize), 0, textureSize - 1);

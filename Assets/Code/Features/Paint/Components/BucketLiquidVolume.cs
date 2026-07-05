@@ -11,7 +11,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
         [SerializeField] private Material _liquidMaterial;
 
         [Header("Cylinder Dimensions")]
-        [SerializeField] private float _cylinderRadius = 0.4f;
+        [SerializeField] private float _cylinderRadius = 0.4f; // سيعامل هنا كـ Half-Width و Half-Length للمكعب
         [SerializeField] private float _cylinderHeight = 0.8f;
         [SerializeField] private float _particleSize = 0.025f;
 
@@ -22,7 +22,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
         [SerializeField] private float _inertiaResponse = 3.5f;
         [SerializeField] private float _sloshSensitivity = 0.4f;
 
-        [Header("References")]
+        [Header("References (Optional in Sandbox Scene)")]
         [SerializeField] private PendulumController _pendulum;
         [SerializeField] private Transform _bucketTransform;
 
@@ -50,9 +50,16 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
         private void Start()
         {
-            if (_pendulum == null) _pendulum = FindObjectOfType<PendulumController>();
-            if (_bucketTransform == null && _pendulum != null)
-                _bucketTransform = _pendulum.BucketTransform;
+            // محاولة جلب النواس تلقائياً إن وجد في المشهد الحالي
+            if (_pendulum == null) _pendulum = FindFirstObjectByType<PendulumController>();
+
+            if (_bucketTransform == null)
+            {
+                if (_pendulum != null)
+                    _bucketTransform = _pendulum.BucketTransform;
+                else
+                    _bucketTransform = this.transform; // الاعتماد على الكائن الحالي إذا كنا في مشهد المعاينة اليدوية
+            }
 
             SetupCylinderLimits();
             CalculateInitialCountFromMass();
@@ -76,6 +83,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
         private void CalculateInitialCountFromMass()
         {
+            // فحص أمان: إذا كان نظام النواس متوفراً نأخذ الكتلة منه، وإلا نملأ الدلو كاملاً للمعاينة اليدوية
             if (_pendulum != null && _pendulum.MassProvider != null)
             {
                 float totalMass = _pendulum.MassProvider.GetTotalMass();
@@ -89,7 +97,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
             }
             else
             {
-                _currentConfiguredCount = _maxParticleCount;
+                _currentConfiguredCount = _maxParticleCount; // المشهد الثاني سيبدأ بكامل الجزيئات للمعاينة
             }
         }
 
@@ -108,12 +116,9 @@ namespace SwingingPaintBucket.Features.Paint.Components
             {
                 LiquidParticle p = new LiquidParticle();
 
-                float angle = Random.Range(0f, Mathf.PI * 2f);
-                float r = _cylinderRadius * 0.9f * Mathf.Sqrt(Random.Range(0f, 1f));
-
-                float x = r * Mathf.Cos(angle);
-                float z = r * Mathf.Sin(angle);
-
+                // التعديل 1: توليد الجزيئات بشكل صندوقي (مستقيم) ليملأ زوايا البوكس بالكامل بدلاً من الدوران الأسطواني
+                float x = Random.Range(-_cylinderRadius * 0.95f, _cylinderRadius * 0.95f);
+                float z = Random.Range(-_cylinderRadius * 0.95f, _cylinderRadius * 0.95f);
                 float y = Random.Range(-halfHeight * 0.9f, -halfHeight * 0.1f);
 
                 p.localPosition = new Vector3(x, y, z);
@@ -171,6 +176,10 @@ namespace SwingingPaintBucket.Features.Paint.Components
                     RemoveParticle();
                 }
             }
+            else
+            {
+                _currentLiquidLevel = 1f; // مستوى ثابت ممتلئ في مشهد الاختبار اليدوي
+            }
         }
 
         private void UpdateParticlePhysics()
@@ -183,7 +192,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
             float halfHeight = _cylinderHeight / 2f;
             float bounce = 0.2f;
-            float safeRadius = _cylinderRadius * 0.94f;
+            float safeLimit = _cylinderRadius * 0.95f; // حدود حواف البوكس الآمنة
 
             float sloshX = Mathf.Clamp(-localInertia.x * _sloshSensitivity, -0.35f, 0.35f);
             float sloshZ = Mathf.Clamp(-localInertia.z * _sloshSensitivity, -0.35f, 0.35f);
@@ -212,42 +221,48 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 }
 
                 p.velocity += repulsionForces * dt;
-
                 p.velocity *= (1f - _viscosityDamping);
                 p.localPosition += p.velocity * dt;
 
-                Vector3 horizontalPos = new Vector3(p.localPosition.x, 0f, p.localPosition.z);
-                float currentRadius = horizontalPos.magnitude;
+                // ==================== التعديل 2: اصطدامات جدران المكعب المستقيمة ====================
 
-                if (currentRadius > safeRadius)
+                // فحص الحواف على محور X (يمين ويسار البوكس)
+                if (p.localPosition.x > safeLimit)
                 {
-                    Vector3 radialNormal = horizontalPos.normalized;
-                    p.localPosition.x = radialNormal.x * safeRadius;
-                    p.localPosition.z = radialNormal.z * safeRadius;
-
-                    Vector3 horizontalVelocity = new Vector3(p.velocity.x, 0f, p.velocity.z);
-                    float normalVelocityDot = Vector3.Dot(horizontalVelocity, radialNormal);
-
-                    if (normalVelocityDot > 0f)
-                    {
-                        Vector3 reflectedHorizontal = horizontalVelocity - (1f + bounce) * normalVelocityDot * radialNormal;
-                        p.velocity.x = reflectedHorizontal.x;
-                        p.velocity.z = reflectedHorizontal.z;
-                    }
+                    p.localPosition.x = safeLimit;
+                    if (p.velocity.x > 0f) p.velocity.x = -p.velocity.x * bounce;
+                }
+                else if (p.localPosition.x < -safeLimit)
+                {
+                    p.localPosition.x = -safeLimit;
+                    if (p.velocity.x < 0f) p.velocity.x = -p.velocity.x * bounce;
                 }
 
+                // فحص الحواف على محور Z (أمام وخلف البوكس)
+                if (p.localPosition.z > safeLimit)
+                {
+                    p.localPosition.z = safeLimit;
+                    if (p.velocity.z > 0f) p.velocity.z = -p.velocity.z * bounce;
+                }
+                else if (p.localPosition.z < -safeLimit)
+                {
+                    p.localPosition.z = -safeLimit;
+                    if (p.velocity.z < 0f) p.velocity.z = -p.velocity.z * bounce;
+                }
+
+                // حساب السطح الحر المائل أثناء الحركة والاهتزاز
                 float dynamicLiquidTop = baseLiquidTop + (p.localPosition.x * sloshX) + (p.localPosition.z * sloshZ);
                 dynamicLiquidTop = Mathf.Clamp(dynamicLiquidTop, -halfHeight * 0.8f, halfHeight * 0.95f);
 
                 if (p.localPosition.y > dynamicLiquidTop)
                 {
                     p.localPosition.y = dynamicLiquidTop;
-                    p.velocity.y = -p.velocity.y * bounce;
+                    if (p.velocity.y > 0f) p.velocity.y = -p.velocity.y * bounce;
                 }
                 else if (p.localPosition.y < -halfHeight * 0.92f)
                 {
                     p.localPosition.y = -halfHeight * 0.92f;
-                    p.velocity.y = -p.velocity.y * bounce;
+                    if (p.velocity.y < 0f) p.velocity.y = -p.velocity.y * bounce;
                 }
             }
         }
@@ -298,6 +313,29 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
             CalculateInitialCountFromMass();
             InitializeParticles(_currentConfiguredCount);
+        }
+
+        public void UpdateLiquidColor(Color newColor)
+        {
+            if (_liquidMaterial != null)
+            {
+                _liquidMaterial.color = newColor;
+            }
+
+            if (_visuals != null)
+            {
+                foreach (var visual in _visuals)
+                {
+                    if (visual != null)
+                    {
+                        Renderer rend = visual.GetComponent<Renderer>();
+                        if (rend != null)
+                        {
+                            rend.material.color = newColor;
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -70,6 +70,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 if (paintSurfaceSystem == null) paintSurfaceSystem = surfaceSurface.GetComponent<PaintSurfaceSystem>();
             }
         }
+
         private void Update()
         {
             if (!_isRunning) return;
@@ -92,26 +93,34 @@ namespace SwingingPaintBucket.Features.Paint.Components
             {
                 _emissionTimer += Time.deltaTime;
 
-                float currentDiameter = _pendulumController != null ? _pendulumController.CurrentApertureDiameter : emissionConfig.holeDiameter;
-                emissionConfig.holeDiameter = currentDiameter;
+                // جلب القطر الحالي من البندول بأمان
+                float currentDiameter = _pendulumController != null ? _pendulumController.CurrentApertureDiameter : 0.01f;
 
-                float spawnRate = emissionService.CalculateEmissionRate(bucketVelocity, emissionConfig);
+
+                // حساب معدل الانبعاث الأساسي بناءً على حركة الدلو
+                float baseSpawnRate = emissionService.CalculateEmissionRate(bucketVelocity, emissionConfig);
+
+                // تحديد معدل ضخ متزن (بين 60 و 120 جسيم في الثانية) لحماية المعالج من الـ Lag
+                float spawnRate = Mathf.Clamp(baseSpawnRate * (currentDiameter / 0.01f) * 2f, 60f, 120f);
+
                 float interval = spawnRate > 0f ? 1f / spawnRate : float.MaxValue;
 
                 while (_emissionTimer >= interval)
                 {
                     _emissionTimer -= interval;
 
-                    if (_particles.Count < 600)
+                    // صمام أمان الأداء: تحديد الحد الأقصى بـ 200 جسيم فقط متواجدين في الهواء معاً
+                    if (_particles.Count < 900)
                     {
                         Vector3 origin = spawnPoint != null ? spawnPoint.position : (bucket != null ? bucket.position - bucket.up * 0.3f : transform.position);
 
-                        float r = currentDiameter * 0.5f;
+                        // تضييق الانتشار العشوائي ليخرج الطلاء كخيط رفيع متناسق
+                        float r = currentDiameter * 0.1f;
                         Vector3 randomOffset = new Vector3(Random.Range(-r, r), 0f, Random.Range(-r, r));
-
                         Vector3 finalSpawnPos = origin + (spawnPoint != null ? spawnPoint.TransformDirection(randomOffset) : (bucket != null ? bucket.TransformDirection(randomOffset) : randomOffset));
 
-                        emissionConfig.particleSize = Mathf.Clamp(currentDiameter * 1.5f, 0.02f, 0.25f);
+                        // تكبير حجم الجسيم المرئي قليلاً لكي يتلاحم مع الجسيم السابق أثناء السقوط فيظهر كالسائل المتصل
+                        emissionConfig.particleSize = 0.035f;
 
                         emissionService.EmitParticle(emissionConfig, finalSpawnPos, bucketVelocity, _particles);
                         massLossNotifier?.NotifyParticleEmitted(emissionConfig.particleMass);
@@ -126,6 +135,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
             RenderParticles();
         }
+
         private void FixedUpdate()
         {
             if (!_isRunning) return;
@@ -135,13 +145,19 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 float surfaceY = surfaceSurface != null ? surfaceSurface.position.y : 0f;
                 List<int> toRemove = particlePhysicsService.UpdateParticles(_particles, Time.fixedDeltaTime, surfaceY, emissionConfig);
 
+                float currentDiameter = _pendulumController != null ? _pendulumController.CurrentApertureDiameter : 0.01f;
+
+                // تحسين الأداء: الفحص والرسم يتم فقط عند اقتراب الجسيمات من السطح تماماً
                 for (int i = 0; i < _particles.Count; i++)
                 {
                     ParticleData p = _particles[i];
-                    if (p.position.y <= surfaceY + 0.03f && paintSurfaceSystem != null)
+
+                    if (p.position.y <= surfaceY + 0.04f && paintSurfaceSystem != null)
                     {
                         Vector2 uv = WorldToSurfaceUV(p.position);
-                        int baseBrush = Mathf.Max(1, (int)(emissionConfig.particleSize * 150f));
+
+                        // حجم ضربة الفرشاة على اللوحة يتناسب طردياً مع قطر فتحة البندول الحالية
+                        int baseBrush = Mathf.Max(1, (int)(currentDiameter * 150f));
                         paintSurfaceSystem.PaintAtUV(uv, emissionConfig.particleColor, baseBrush);
                     }
                 }
@@ -168,6 +184,7 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
             if (invertX) u = 1f - u;
             if (invertZ) z = 1f - z;
+
 
             return new Vector2(Mathf.Clamp01(u), Mathf.Clamp01(z));
         }
