@@ -45,6 +45,11 @@ namespace SwingingPaintBucket.Features.Paint.Components
         [Header("Emission Configurations")]
         public PaintEmissionConfig emissionConfig = new PaintEmissionConfig();
 
+        [Header("Sieve & Holes Customization")]
+        [Tooltip("المسافة بين الفتحات بوحدة الـ Unity (مثلاً 0.05 تعني 5 سانتي على الأقل)")]
+        [Range(0.02f, 0.2f)]
+        public float holeSpacing = 0.05f; // حقل للتحكم بالتباعد (متقاربة أو متباعدة) من الـ Inspector
+
         [Header("UV Mapping Adjustments")]
         public bool invertX = false;
         public bool invertZ = false;
@@ -55,6 +60,12 @@ namespace SwingingPaintBucket.Features.Paint.Components
         private bool _isRunning;
         private bool _emissionCutoff;
         private Renderer _surfaceRenderer;
+
+        // مصفوفة لتخزين مواقع الثقوب بصيغة المنخلة بالنسبة لمركز الدلو
+        private Vector3[] _holeOffsets;
+        private int _lastHoleIndex = 0;
+        private int _cachedHolesCount = -1;
+        private float _cachedHoleSpacing = -1f; // كاش لمراقبة تغير المسافة أيضاً
 
         private void Awake()
         {
@@ -93,19 +104,25 @@ namespace SwingingPaintBucket.Features.Paint.Components
             {
                 _emissionTimer += Time.deltaTime;
 
-                // جلب القطر الحالي من البندول بأمان
+                // جلب القيم الحالية من كود التحكم بالبندول (القطر وعدد الثقوب الفعلي)
                 float currentDiameter = _pendulumController != null ? _pendulumController.CurrentApertureDiameter : 0.01f;
+                int holesCount = _pendulumController != null ? _pendulumController.HolesCount : 1;
 
-                // حساب مساحة الفتحة لضبط كمية التدفق بدقة
+                // إذا تغير عدد الثقوب أو تغيرت قيمة التباعد أثناء التشغيل، نعيد حساب التوزيع فوراً
+                if (holesCount != _cachedHolesCount || !Mathf.Approximately(holeSpacing, _cachedHoleSpacing))
+                {
+                    GenerateSievePattern(holesCount);
+                }
+
+                // حساب مساحة الثقب الواحد مقارنة بالأساسي لتحديد دقة التدفق
                 float radius = currentDiameter * 0.5f;
-                float baseRadius = 0.005f; // لقطر 0.01
-                float areaRatio = (radius * radius) / (baseRadius * baseRadius);
+                float baseRadius = 0.005f;
+                float singleHoleAreaRatio = (radius * radius) / (baseRadius * baseRadius);
 
-                // حساب معدل الانبعاث الأساسي بناءً على حركة الدلو
+                // حساب معدل التدفق الإجمالي (معدل التدفق للثقب الواحد مضروباً في عدد الثقوب المتوفرة)
                 float baseSpawnRate = emissionService.CalculateEmissionRate(bucketVelocity, emissionConfig);
-
-                // زيادة كمية الجزيئات طردياً مع مساحة الفتحة ليتدفق السائل بكمية أكبر عندما تكون الفتحة أكبر
-                float spawnRate = Mathf.Clamp(baseSpawnRate * areaRatio, 30f, 3000f);
+                float totalSpawnRate = baseSpawnRate * singleHoleAreaRatio * holesCount;
+                float spawnRate = Mathf.Clamp(totalSpawnRate, 30f, 5000f);
 
                 float interval = spawnRate > 0f ? 1f / spawnRate : float.MaxValue;
 
@@ -113,23 +130,28 @@ namespace SwingingPaintBucket.Features.Paint.Components
                 {
                     _emissionTimer -= interval;
 
-                    // رفع الحد الأقصى للجزيئات للسماح بتدفق أكبر للفتحات الواسعة
-                    if (_particles.Count < 3000)
+                    if (_particles.Count < 5000) // حد الجزيئات الأقصى
                     {
                         Vector3 origin = spawnPoint != null ? spawnPoint.position : (bucket != null ? bucket.position - bucket.up * 0.3f : transform.position);
 
-                        // توزيع الجزيئات عشوائياً ولكن ضمن مساحة الفتحة الدائرية فقط (بدون تجاوز محيط الفتحة)
-                        Vector2 randomCircle = Random.insideUnitCircle * radius;
-                        Vector3 randomOffset = new Vector3(randomCircle.x, 0f, randomCircle.y);
-                        Vector3 finalSpawnPos = origin + (spawnPoint != null ? spawnPoint.TransformDirection(randomOffset) : (bucket != null ? bucket.TransformDirection(randomOffset) : randomOffset));
+                        // اختيار الثقب التالي بالدور
+                        Vector3 chosenOffset = Vector3.zero;
+                        if (_holeOffsets != null && _holeOffsets.Length > 0)
+                        {
+                            _lastHoleIndex = (_lastHoleIndex + 1) % _holeOffsets.Length;
+                            chosenOffset = _holeOffsets[_lastHoleIndex];
+                        }
 
-                        // تثبيت حجم الجزيئات بغض النظر عن قطر الفتحة
+                        // توزيع عشوائي طفيف جداً داخل حدود الثقب الصغير نفسه
+                        Vector2 innerCircle = Random.insideUnitCircle * radius;
+                        Vector3 preciseOffset = chosenOffset + new Vector3(innerCircle.x, 0f, innerCircle.y);
+
+                        Vector3 finalSpawnPos = origin + (spawnPoint != null ? spawnPoint.TransformDirection(preciseOffset) : (bucket != null ? bucket.TransformDirection(preciseOffset) : preciseOffset));
+
                         emissionConfig.particleSize = 0.035f;
 
-                        // إضافة سرعة خروج السائل من الفتحة (Torricelli's Law) لأسفل الدلو
-                        // لمنع تراكم الجزيئات وانفجارها عند نقطة الخروج
                         Vector3 exitDir = bucket != null ? -bucket.up : Vector3.down;
-                        float effluxSpeed = Mathf.Sqrt(2f * 9.81f * 0.3f); // افتراض ارتفاع السائل 0.3 متر
+                        float effluxSpeed = Mathf.Sqrt(2f * 9.81f * 0.3f);
                         Vector3 particleInitialVelocity = bucketVelocity + (exitDir * effluxSpeed);
 
                         emissionService.EmitParticle(emissionConfig, finalSpawnPos, particleInitialVelocity, _particles);
@@ -146,6 +168,56 @@ namespace SwingingPaintBucket.Features.Paint.Components
             RenderParticles();
         }
 
+        /// <summary>
+        /// توليد توزيع هندسي دائري منتظم للثقوب بتباعد دقيق ومتحكم به
+        /// </summary>
+        private void GenerateSievePattern(int count)
+        {
+            _cachedHolesCount = count;
+            _cachedHoleSpacing = holeSpacing;
+            _holeOffsets = new Vector3[count];
+
+            if (count <= 1)
+            {
+                _holeOffsets[0] = Vector3.zero;
+                return;
+            }
+
+            // الثقب الأول دائماً في المركز
+            _holeOffsets[0] = Vector3.zero;
+
+            int remaining = count - 1;
+            int currentHoleIndex = 1;
+            int ringIndex = 1;
+
+            // الحلقات تتوزع بناءً على التباعد المحدد من قبل المستخدم
+            while (remaining > 0)
+            {
+                float ringRadius = ringIndex * holeSpacing;
+
+                // لحساب محيط الدائرة ومعرفة كم ثقب يتسع بمسافة أمان تساوي holeSpacing:
+                // المحيط = 2 * PI * ringRadius. نقسمه على holeSpacing ليعطينا السعة القصوى الهندسية للحلقة
+                int maxHolesInRing = Mathf.FloorToInt((2f * Mathf.PI * ringRadius) / holeSpacing);
+
+                // نضمن ألا يقل عدد الثقوب بالحلقة عن 6 لتكوين شكل هندسي متناسق إلا إذا كان المتبقي أقل
+                int holesInRing = Mathf.Clamp(maxHolesInRing, 6, remaining);
+                holesInRing = Mathf.Min(holesInRing, remaining);
+
+                for (int i = 0; i < holesInRing; i++)
+                {
+                    float angle = i * (2f * Mathf.PI / holesInRing);
+                    float x = Mathf.Cos(angle) * ringRadius;
+                    float z = Mathf.Sin(angle) * ringRadius;
+
+                    _holeOffsets[currentHoleIndex] = new Vector3(x, 0f, z);
+                    currentHoleIndex++;
+                }
+
+                remaining -= holesInRing;
+                ringIndex++;
+            }
+        }
+
         private void FixedUpdate()
         {
             if (!_isRunning) return;
@@ -157,7 +229,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
                 float currentDiameter = _pendulumController != null ? _pendulumController.CurrentApertureDiameter : 0.01f;
 
-                // تحسين الأداء: الفحص والرسم يتم فقط عند اقتراب الجسيمات من السطح تماماً
                 for (int i = 0; i < _particles.Count; i++)
                 {
                     ParticleData p = _particles[i];
@@ -165,8 +236,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
                     if (p.position.y <= surfaceY + 0.04f && paintSurfaceSystem != null)
                     {
                         Vector2 uv = WorldToSurfaceUV(p.position);
-
-                        // حجم ضربة الفرشاة على اللوحة يتناسب طردياً مع قطر فتحة البندول الحالية
                         int baseBrush = Mathf.Max(1, (int)(currentDiameter * 150f));
                         paintSurfaceSystem.PaintAtUV(uv, emissionConfig.particleColor, baseBrush);
                     }
@@ -194,7 +263,6 @@ namespace SwingingPaintBucket.Features.Paint.Components
 
             if (invertX) u = 1f - u;
             if (invertZ) z = 1f - z;
-
 
             return new Vector2(Mathf.Clamp01(u), Mathf.Clamp01(z));
         }

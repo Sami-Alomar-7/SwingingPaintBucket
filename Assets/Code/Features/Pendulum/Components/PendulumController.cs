@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections.Generic;
 using SwingingPaintBucket.Features.Pendulum.Data;
 using SwingingPaintBucket.Features.Pendulum.Interfaces;
@@ -12,9 +12,14 @@ using SwingingPaintBucket.Features.Surface.Components;
 
 namespace SwingingPaintBucket.Features.Pendulum.Components
 {
+    public enum BucketAttachmentMode { Center, LeftRim, RightRim }
+
     [RequireComponent(typeof(Transform))]
     public class PendulumController : MonoBehaviour, IPendulumView
     {
+        [Header("Attachment Settings")]
+        public BucketAttachmentMode AttachmentMode = BucketAttachmentMode.Center;
+
         [Header("Pendulum Services")]
         [SerializeField] private PendulumInputHandler _inputHandler;
         public IPendulumInputHandler InputHandler { get => _inputHandler; set => _inputHandler = value as PendulumInputHandler; }
@@ -45,6 +50,25 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
         private PendulumState _state;
         private float _angleAcceleration;
         private bool _isRunning;
+
+        [Header("Holes Settings")]
+        [SerializeField] private int _holesCount = 1; // القيمة الافتراضية ثقب واحد
+        public int HolesCount => _holesCount;
+
+        // دالة عامة يتم استدعاؤها تلقائياً عند تغيير النص أو قراءته من الـ UI
+        public void UpdateHolesCount(float value)
+        {
+            _holesCount = Mathf.RoundToInt(value);
+        }
+
+        // دالة جديدة لقراءة النص من الـ InputField وتحويله لرقم صحيح
+        public void UpdateHolesCountFromString(string text)
+        {
+            if (int.TryParse(text, out int result))
+            {
+                _holesCount = Mathf.Max(1, result); // ضمان ألا يقل عدد الفتحات عن 1
+            }
+        }
 
         public float CurrentApertureDiameter => _config != null ? _config.ApertureDiameter : 0.01f;
 
@@ -102,7 +126,6 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             {
                 if (_config.CurrentRopeType == RopeType.Rigid)
                 {
-
                     var rigidForces = new List<IForceProvider>();
                     foreach (var fp in ForceProviders)
                     {
@@ -112,7 +135,6 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
                 }
                 else
                 {
-
                     _angleAcceleration = PhysicsEngine.ComputeAngularAcceleration(_state, _config, totalMass, ForceProviders);
                 }
             }
@@ -126,6 +148,12 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             {
                 _config = _inputHandler.ReadPendulumConfig();
                 _state = _inputHandler.ReadPendulumState();
+
+                // قراءة قيمة الـ UI الخاصة بعدد الفتحات وتحديث المتغير قبل بدء المحاكاة
+                if (_inputHandler.HolesCountInput != null)
+                {
+                    UpdateHolesCountFromString(_inputHandler.HolesCountInput.text);
+                }
             }
 
             Vector3 pivotPos = _pivotTransform != null ? _pivotTransform.position : new Vector3(0f, _pivotY, 0f);
@@ -142,7 +170,6 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             if (proposedPosition.y < _groundLevel)
             {
                 proposedPosition.y = _groundLevel;
-
                 float dx = proposedPosition.x - pivotPos.x;
                 float dy = pivotPos.y - _groundLevel;
                 _state.Theta = Mathf.Atan2(dx, dy);
@@ -192,6 +219,12 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             {
                 _config = _inputHandler.ReadPendulumConfig();
                 _state = _inputHandler.ReadPendulumState();
+
+                // قراءة القيمة أيضاً عند عمل إعادة ضبط للمحاكاة
+                if (_inputHandler.HolesCountInput != null)
+                {
+                    UpdateHolesCountFromString(_inputHandler.HolesCountInput.text);
+                }
             }
 
             Vector3 pivotPos = _pivotTransform != null ? _pivotTransform.position : new Vector3(0f, _pivotY, 0f);
@@ -203,6 +236,7 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             _angleAcceleration = 0f;
 
             UpdateBucketPosition(_state.BucketPosition);
+            _state.BucketPosition = pivotPos + length * new Vector3(Mathf.Sin(_state.Theta), -Mathf.Cos(_state.Theta), 0f);
             UpdateRope(pivotPos, _state.BucketPosition);
 
             if (MassProvider is MassSystem massSystem && _config != null)
@@ -223,7 +257,6 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
         {
             if (_config != null && _config.CurrentRopeType == RopeType.Rigid)
             {
-
                 _state.Omega += _angleAcceleration * dt;
                 _state.Theta += _state.Omega * dt;
                 _state.Theta = Mathf.Clamp(_state.Theta, -Mathf.PI, Mathf.PI);
@@ -234,11 +267,8 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
                 {
                     float verticalDistance = pivotPos.y - _groundLevel;
                     float maxAllowedTheta = Mathf.Acos(Mathf.Clamp(verticalDistance / length, 0f, 1f));
-
                     _state.Theta = Mathf.Sign(_state.Theta) * maxAllowedTheta;
-
                     _state.Omega = -_state.Omega * 0.3f;
-
                     _state.BucketPosition = pivotPos + length * new Vector3(Mathf.Sin(_state.Theta), -Mathf.Cos(_state.Theta), 0f);
                 }
 
@@ -246,7 +276,6 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
             }
             else
             {
-
                 IntegrateElasticPhysics(dt, pivotPos, length);
             }
 
@@ -319,12 +348,26 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
         {
             if (_bucketTransform != null)
             {
-                _bucketTransform.position = worldPosition;
-                if (_pivotTransform != null)
+                Vector3 pivotPos = _pivotTransform != null ? _pivotTransform.position : (worldPosition + Vector3.up * 3f);
+                Vector3 ropeDir = (pivotPos - worldPosition).normalized;
+                if (ropeDir == Vector3.zero) ropeDir = Vector3.up;
+
+                Vector3 localAP = Vector3.zero;
+                if (AttachmentMode == BucketAttachmentMode.LeftRim) localAP = new Vector3(-0.4f, 0.4f, 0f);
+                else if (AttachmentMode == BucketAttachmentMode.RightRim) localAP = new Vector3(0.4f, 0.4f, 0f);
+
+                if (localAP == Vector3.zero)
                 {
-                    Vector3 pivotPos = _pivotTransform.position;
-                    Vector3 toPivot = (pivotPos - worldPosition).normalized;
-                    if (toPivot != Vector3.zero) _bucketTransform.up = toPivot;
+                    _bucketTransform.position = worldPosition;
+                    _bucketTransform.up = ropeDir;
+                    _bucketTransform.up = ropeDir;
+                }
+                else
+                {
+                    Quaternion baseRot = Quaternion.LookRotation(Vector3.forward, ropeDir);
+                    Quaternion offsetRot = Quaternion.FromToRotation(Vector3.up, localAP.normalized);
+                    _bucketTransform.rotation = baseRot * Quaternion.Inverse(offsetRot);
+                    _bucketTransform.position = worldPosition - _bucketTransform.TransformVector(localAP);
                 }
             }
         }
@@ -335,5 +378,11 @@ namespace SwingingPaintBucket.Features.Pendulum.Components
         }
 
         public bool IsRunning() => _isRunning;
+
+        public void OnAttachmentModeDropdownChanged(int index)
+        {
+            AttachmentMode = (BucketAttachmentMode)index;
+            ResetSimulation();
+        }
     }
 }

@@ -7,31 +7,34 @@ namespace SwingingPaintBucket.Features.Paint.Components
     {
         [SerializeField] private PendulumController _pendulumController;
 
+        private float _currentDiameter;
+        private int _holesCount;
+
         private void Start()
         {
             if (_pendulumController == null)
                 _pendulumController = FindAnyObjectByType<PendulumController>();
 
-            UpdateApertureScale();
-            ApplyScale();
+            UpdateApertureData();
         }
 
-        public void UpdateApertureScale()
+        private void Update()
         {
-            if (_pendulumController != null && _pendulumController.StartButton != null)
-            {
-                _pendulumController.StartButton.onClick.RemoveListener(ApplyScale);
-                _pendulumController.StartButton.onClick.AddListener(ApplyScale);
-            }
+            UpdateApertureData();
         }
 
-        private void ApplyScale()
+        private void UpdateApertureData()
         {
             if (_pendulumController == null) return;
 
-            float diameter = _pendulumController.CurrentApertureDiameter;
+            // جلب قطر الفتحة وعدد الثقوب الجديد برمجياً في كل إطار
+            _currentDiameter = _pendulumController.CurrentApertureDiameter;
+            _holesCount = _pendulumController.HolesCount;
 
-            transform.localScale = new Vector3(diameter, 0.001f, diameter);
+            // الشكل البصري ثابت لا يتغير كما طلبتِ تماماً
         }
+
+        public float CurrentDiameter => _currentDiameter;
+        public int HolesCount => _holesCount;
     }
 }

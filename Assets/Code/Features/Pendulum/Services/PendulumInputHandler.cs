@@ -100,5 +100,10 @@ namespace SwingingPaintBucket.Features.Pendulum.Services
             float v = ParseFloat(text, fallback);
             return v >= 0f ? v : fallback;
         }
+        [Header("Holes Settings")]
+        [SerializeField] private TMPro.TMP_InputField _holesCountInput;
+
+        public TMPro.TMP_InputField HolesCountInput => _holesCountInput;
     }
+
 }

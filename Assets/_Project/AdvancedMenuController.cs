@@ -6,21 +6,21 @@ using SwingingPaintBucket.Features.Paint.Components;
 
 public class AdvancedMenuController : MonoBehaviour
 {
-    [Header("زر الإعدادات الرئيسي والقائمة الكاملة")]
+    [Header("System Configration")]
     public GameObject mainSettingsButton;
     public GameObject mainSettingsMenuPanel;
 
-    [Header("قوائم المحتوى للأقسام (المستوى الثالث)")]
+    [Header("Contents")]
     public GameObject ropeContent;
     public GameObject bucketContent;
     public GameObject fluidContent;
     public GameObject forcesContent;
     public GameObject groundContent;
 
-    [Header("ربط سكربت الحركة والمحاكاة")]
+    [Header("Physics Script")]
     public MonoBehaviour physicsMovementScript;
 
-    [Header("ربط نظام الرسم والباعث (مهم للـ Reset والحفظ)")]
+    [Header("Paint settings")]
     public PaintSurfaceSystem paintSurfaceSystem;
     public PaintEmitter paintEmitter;
 
@@ -72,28 +72,21 @@ public class AdvancedMenuController : MonoBehaviour
         {
             physicsMovementScript.enabled = true;
             Time.timeScale = 1f;
-            Debug.Log("انطلقت المحاكاة برمجياً!");
         }
     }
 
-    // زر الريسيت المطور: يمسح اللوحة والجسيمات فوراً مع الحفاظ على القوائم والقيم المعدلة كما هي
     public void ResetToOriginalValues()
     {
-        // 1. مسح وتفريغ جزيئات الطلاء الطائرة في الهواء فوراً لمنع تساقطها بعد التنظيف
         if (paintEmitter != null)
         {
             paintEmitter.ClearParticles();
-            Debug.Log("تم مسح الجسيمات الطائرة بنجاح.");
         }
 
-        // 2. استدعاء دالة التنظيف المخصصة لتبييض اللوحة بالكامل وتصفير مصفوفة الـ SPH الداخلية
         if (paintSurfaceSystem != null)
         {
             paintSurfaceSystem.ClearSurfaceCustom();
-            Debug.Log("تم تنظيف السطح وتبييض الورقة برمجياً دون إعادة تحميل المشهد!");
         }
 
-        // 3. إعادة تهيئة السائل في الدلو
         BucketLiquidVolume volume = FindObjectOfType<BucketLiquidVolume>();
         if (volume != null)
         {
@@ -101,24 +94,19 @@ public class AdvancedMenuController : MonoBehaviour
         }
     }
 
-    // زر حفظ النتيجة الحالية للوحة كصورة JPG داخل ملفات المشروع
     public void ExportPaintingToJPG()
     {
         if (paintSurfaceSystem == null)
         {
-            Debug.LogError("لا يمكن الحفظ، سكربت PaintSurfaceSystem غير مرتبط!");
             return;
         }
 
-        // جلب التيكستشر المحدث والمكتوب عليه فعلياً من نظام السطح
         Texture2D currentTexture = paintSurfaceSystem.GetCurrentSurfaceTexture();
 
         if (currentTexture != null)
         {
-            // تحويل مصفوفة البكسلات الحالية اللوحة الفنية إلى صيغة JPG
             byte[] jpgBytes = currentTexture.EncodeToJPG(95);
 
-            // تحديد مسار الحفظ داخل مجلد مشروعك (Assets/SavedPaintings)
             string folderPath = Path.Combine(Application.dataPath, "SavedPaintings");
 
             if (!Directory.Exists(folderPath))
@@ -130,23 +118,20 @@ public class AdvancedMenuController : MonoBehaviour
             string fullPath = Path.Combine(folderPath, fileName);
 
             File.WriteAllBytes(fullPath, jpgBytes);
-            Debug.Log($"تم حفظ اللوحة الفنية بنجاح بالتيكستشر المحدث في: {fullPath}");
 
 #if UNITY_EDITOR
-            UnityEditor.AssetDatabase.Refresh(); // إظهار الصورة فوراً في نافذة الـ Project
+            UnityEditor.AssetDatabase.Refresh(); 
 #endif
         }
         else
         {
-            Debug.LogError("لم يتم العثور على قوام نسيجي (Texture2D) جاهز للحفظ!");
+            Debug.LogError("saved");
         }
     }
 
-    // ==================== إعدادات تغيير الألوان السريعة عبر الواجهة ====================
-    [Header("إعدادات تغيير الألوان السريعة عبر الواجهة")]
+    [Header("Change color")]
     [SerializeField] private BucketLiquidVolume _bucketVolumeRef;
 
-    // دوال جاهزة للربط المباشر مع الأزرار في Unity Inspector لتغيير اللون
     public void SetColorRed() => ChangeSystemColor(Color.red);
     public void SetColorBlue() => ChangeSystemColor(Color.blue);
     public void SetColorYellow() => ChangeSystemColor(Color.yellow);
@@ -154,13 +139,11 @@ public class AdvancedMenuController : MonoBehaviour
 
     public void ChangeSystemColor(Color newColor)
     {
-        // 1. تغيير لون الجزيئات التي ستسقط في الهواء مستقبلاً
         if (paintEmitter != null && paintEmitter.emissionConfig != null)
         {
             paintEmitter.emissionConfig.particleColor = newColor;
         }
 
-        // 2. تغيير لون الجزيئات والمادة الموجودة حالياً داخل الدلو
         if (_bucketVolumeRef == null) _bucketVolumeRef = FindObjectOfType<BucketLiquidVolume>();
         if (_bucketVolumeRef != null)
         {
@@ -168,27 +151,17 @@ public class AdvancedMenuController : MonoBehaviour
         }
     }
 
-    // ==================== دالة إغلاق البرنامج بالكامل (نسخة الـ EXE) ====================
-    /// <summary>
-    /// تقوم هذه الدالة بإنهاء تشغيل البرنامج بشكل كامل فوراً عند الضغط على الزر،
-    /// وتعمل بنجاح سواء كنت داخل محرّر Unity أو بعد تصدير البرنامج كملف EXE مستقل.
-    /// </summary>
     public void ExitApplication()
     {
-        Debug.Log("جاري إنهاء وإغلاق التطبيق بالكامل...");
 
 #if UNITY_EDITOR
-        // إذا كنتِ تختبرين البرنامج داخل محرك اليونيتي، سيتم إيقاف وضع التشغيل (Play Mode)
         UnityEditor.EditorApplication.isPlaying = false;
 #else
         // إذا تم تشغيل البرنامج كنسخة مستقلة EXE على الويندوز، سيغلق البرنامج فوراً
         Application.Quit();
 #endif
     }
-    // ==================== استقبال وتحديث نوع الأرضية عبر الـ Dropdown ====================
-    /// <summary>
-    /// يتم استدعاء هذه الدالة تلقائياً عند تغيير الخيار داخل الـ Dropdown في الواجهة
-    /// </summary>
+
     /// <param name="dropdownIndex">رقم الخيار المحدد (0, 1, 2, 3)</param>
     public void OnGroundDropdownValueChanged(int dropdownIndex)
     {
@@ -198,7 +171,6 @@ public class AdvancedMenuController : MonoBehaviour
         }
         else
         {
-            // محاولة جلب المرجع تلقائياً إذا لم يكن مسحوباً في الـ Inspector
             paintSurfaceSystem = FindFirstObjectByType<PaintSurfaceSystem>();
             if (paintSurfaceSystem != null)
             {
@@ -206,19 +178,17 @@ public class AdvancedMenuController : MonoBehaviour
             }
             else
             {
-                Debug.LogError("لم يتم العثور على سكربت PaintSurfaceSystem في المشهد لتحديث نوع الأرضية!");
+                Debug.LogError("no script found");
             }
         }
     }
     public void LoadSandboxScene()
     {
-        // الانتقال إلى مشهد المعاينة اليدوية لتخفيف الضغط
         SceneManager.LoadScene(1);
     }
 
     public void LoadMainScene()
     {
-        // العودة للمشهد الفيزيائي الرئيسي
         SceneManager.LoadScene(0);
     }
 }
