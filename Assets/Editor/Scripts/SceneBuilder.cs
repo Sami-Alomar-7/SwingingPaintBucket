@@ -284,7 +284,7 @@ namespace SwingingPaintBucket.Editor
             pendulumController.ForceProviders = new List<IForceProvider>
             {
                 new GravityForce(massSystem),
-                new DragForce(0.05f)
+                new DragForce()
             };
 
 
